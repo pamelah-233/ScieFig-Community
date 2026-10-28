@@ -1,4 +1,4 @@
-name: Community Windows release
+name: Windows release
 
 on:
   push:
@@ -118,7 +118,7 @@ jobs:
               print(model,metadata['device'],result.dtype)
           '@ | .venv/Scripts/python.exe -
           if ($LASTEXITCODE) { throw 'Frozen worker verification failed' }
-      - name: Freeze community application before installer compression
+      - name: Freeze application before installer compression
         shell: pwsh
         run: |
           $env:PATH="$PWD/.venv/Scripts;$env:PATH"
@@ -141,7 +141,7 @@ jobs:
             throw "Frozen startup/shutdown smoke failed: $($app.ExitCode)"
           }
           if (-not (Test-Path $env:SCIEFIG_RELEASE_SMOKE_MARKER) -or (Get-Content $env:SCIEFIG_RELEASE_SMOKE_MARKER -Raw) -ne 'main-window-closed') { throw 'Main window smoke marker missing' }
-      - name: Compile installer and matching community source
+      - name: Compile installer and matching source
         shell: pwsh
         run: |
           $folder=Join-Path $PWD 'artifacts/windows/ScieFig_R10'
@@ -149,11 +149,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Installer manifest failed' }
           & ISCC.exe "/DDistDir=$folder" "/DOutputDir=$PWD/artifacts/windows" "/DIconFile=$PWD/resources/icons/sciefig_app_icon.ico" "/DFilesList=$PWD/build/r10/community_files.iss" packaging/ScieFig_R10.iss
           if ($LASTEXITCODE) { throw 'Community installer failed' }
-          Move-Item -LiteralPath "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Setup.exe" -Destination "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Setup.exe"
-          git archive --format=zip --output="artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Windows_source.zip" HEAD
+          git archive --format=zip --output="artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Windows_source.zip" HEAD
           if ($LASTEXITCODE) { throw 'Source archive failed' }
           Copy-Item -LiteralPath docs/DEPENDENCY_SOURCES.json -Destination artifacts/windows/DEPENDENCY_SOURCES.json
-          $installer=Get-Item "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Setup.exe"
+          $installer=Get-Item "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Setup.exe"
           if ($installer.Length -ge 2GB) { throw 'Installer exceeds GitHub single-file limit' }
       - name: Publish directly from GitHub runner
         shell: pwsh
@@ -165,10 +164,10 @@ jobs:
             $existing=$release | ConvertFrom-Json
             if (-not $existing.isDraft -or $existing.targetCommitish -ne $env:GITHUB_SHA) { throw 'Refusing to replace a published release or another source revision' }
           } else {
-            gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --draft --title "ScieFig Community $env:RELEASE_VERSION" --notes-file docs/COMMUNITY_RELEASE_NOTES.md
+            gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --draft --title "ScieFig $env:RELEASE_VERSION" --notes-file docs/COMMUNITY_RELEASE_NOTES.md
             if ($LASTEXITCODE) { throw 'Release creation failed' }
           }
-          gh release upload $env:RELEASE_TAG "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Setup.exe" "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Windows_source.zip" "artifacts/windows/DEPENDENCY_SOURCES.json" --repo $env:GITHUB_REPOSITORY --clobber
+          gh release upload $env:RELEASE_TAG "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Setup.exe" "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Windows_source.zip" "artifacts/windows/DEPENDENCY_SOURCES.json" --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE) { throw 'Release asset upload failed' }
-          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest --title "ScieFig Community $env:RELEASE_VERSION" --notes-file docs/COMMUNITY_RELEASE_NOTES.md
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest --title "ScieFig $env:RELEASE_VERSION" --notes-file docs/COMMUNITY_RELEASE_NOTES.md
           if ($LASTEXITCODE) { throw 'Release publication failed' }

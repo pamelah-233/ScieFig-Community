@@ -1,4 +1,4 @@
-ScieFig Community - Getting Started
+ScieFig 使用入门 / Getting Started
 ==================================
 
 Community source does not require machine-code activation.
