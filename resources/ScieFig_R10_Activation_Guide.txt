@@ -1,0 +1,59 @@
+ScieFig Community - Getting Started
+==================================
+
+Community source does not require machine-code activation.
+Start ScieFig, import your data, confirm calibration, and review saved overlays.
+See docs/GETTING_STARTED.md and THIRD_PARTY_NOTICES.md in the source distribution.
+Public model-enabled installers are pending model redistribution review.
+Do not distribute historical activated installers as new community builds.
+
+The filename is retained for the existing packaging layout. The reference below
+applies only to historical activated releases, not the community entrypoint.
+
+Historical reference: ScieFig 1.1.0 Activation Guide
+==============================
+
+ScieFig 1.1.0 uses offline machine-code activation. The license is permanent
+for the activated computer and is not designed to activate a different computer.
+
+1.1.0 keeps the R0.95 license channel for the current trial series, so existing
+valid R0.95 licenses remain accepted on the same computer.
+
+How to activate
+---------------
+
+1. Install ScieFig 1.1.0 with ScieFig_1.1.0_Setup.exe.
+2. Start ScieFig from the Start menu or desktop shortcut.
+3. If the activation window appears, click Copy next to the machine code.
+4. Send the machine code to the ScieFig trial issuer.
+5. Wait for the returned license JSON file.
+6. Click Import License in the activation window.
+7. Select the returned license JSON file.
+8. After activation succeeds, ScieFig opens the workspace.
+
+Important notes
+---------------
+
+- Keep the license JSON file. It can be imported again on the same computer.
+- Do not edit the license JSON file.
+- Copying the installed application or license JSON to another computer should
+  not activate that computer.
+- If Windows SmartScreen warns about an unknown publisher, this 1.1.0 package is
+  not code-signed. Confirm that the installer came from the ScieFig issuer.
+- If the machine code changes after hardware replacement, ask the issuer for a
+  new license JSON.
+
+Troubleshooting
+---------------
+
+Invalid license:
+The license file was edited, damaged, issued for another computer, or signed
+with a different release key. Ask the issuer for a new license JSON and include
+the current machine code.
+
+No activation window:
+ScieFig already found a valid license on this computer.
+
+Activation succeeds but ScieFig does not open:
+Restart ScieFig. If the problem persists, send the error message and the
+current machine code to the issuer.

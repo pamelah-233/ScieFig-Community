@@ -1,0 +1,13 @@
+{
+  "name": "通用核检测 · 参考参数",
+  "parameters": {
+    "method": "cellpose_cyto3",
+    "diameter_px": 25,
+    "min_area_px": 50,
+    "max_area_px": 2000,
+    "sensitivity": 1,
+    "cellpose_input": "tile_normalization"
+  },
+  "scope": "Starting settings for the reviewed native DAPI images; load explicitly and adjust to image scale. Not a universal accuracy guarantee."
+}
+

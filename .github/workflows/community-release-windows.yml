@@ -1,0 +1,174 @@
+name: Community Windows release
+
+on:
+  push:
+    tags: ['community-v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: community-windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      RELEASE_VERSION: 1.2.2
+      RELEASE_TAG: community-v1.2.2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Verify public source and immutable release identity
+        shell: pwsh
+        run: |
+          if ('${{ github.event.repository.private }}' -ne 'false') { throw 'Publish only from the reviewed public repository' }
+          if ($env:GITHUB_REF_NAME -ne $env:RELEASE_TAG) { throw 'Community tag/version mismatch' }
+          @'
+          import json
+          from pathlib import Path
+          from core.constants import SOFTWARE_VERSION
+          assert SOFTWARE_VERSION == '1.2.2'
+          manifest=json.loads(Path('PUBLIC_SOURCE_MANIFEST.json').read_text(encoding='utf-8'))
+          assert manifest['history_included'] is False
+          assert manifest['private_research_materials_included'] is False
+          assert len(manifest['model_weight_files']) == 4
+          status=json.loads(Path('packaging/models/PUBLIC_MODEL_STATUS.json').read_text(encoding='utf-8'))
+          assert status['public_weights_approved'] and status['maintainer_authorized_local_adaptations']
+          assert 'GNU AFFERO GENERAL PUBLIC LICENSE' in Path('LICENSE').read_text()
+          '@ | python -
+          if ($LASTEXITCODE) { throw 'Public source preflight failed' }
+      - name: Prepare application environment
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python.exe -m pip install -r requirements.txt pyinstaller==6.22.3
+          if ($LASTEXITCODE) { throw 'Application dependencies failed' }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - name: Prepare offline inference environment
+        shell: pwsh
+        run: |
+          python -m venv .venv-cellpose
+          .venv-cellpose/Scripts/python.exe -m pip install -r packaging/requirements-cellpose-windows.txt
+          if ($LASTEXITCODE) { throw 'Worker dependencies failed' }
+      - name: Prepare build tools and pinned OCR
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($PSVersionTable.PSVersion -lt [version]'7.6.4') {
+            $release = gh api repos/PowerShell/PowerShell/releases/latest | ConvertFrom-Json
+            if ([version]$release.tag_name.TrimStart('v') -lt [version]'7.6.4') { throw 'PowerShell Core 7.6.4+ required' }
+            $asset = $release.assets | Where-Object name -Like '*-win-x64.zip' | Select-Object -First 1
+            Invoke-WebRequest $asset.browser_download_url -OutFile "$env:RUNNER_TEMP/pwsh.zip"
+            Expand-Archive "$env:RUNNER_TEMP/pwsh.zip" "$env:RUNNER_TEMP/pwsh"
+            "$env:RUNNER_TEMP/pwsh" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          }
+          choco install tesseract --version=5.5.3.20260724 --yes --no-progress
+          if ($LASTEXITCODE -notin 0,1641,3010) { throw 'OCR installation failed' }
+          if (-not (Test-Path 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe')) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -notin 0,1641,3010) { throw 'Inno Setup installation failed' }
+          }
+          'C:/Program Files (x86)/Inno Setup 6' | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          New-Item -ItemType Directory -Path build/local_style_runtime -Force | Out-Null
+          Copy-Item -LiteralPath 'C:/Program Files/Tesseract-OCR' -Destination build/local_style_runtime/tesseract -Recurse
+          if (-not (Test-Path build/local_style_runtime/tesseract/tessdata/eng.traineddata)) { throw 'Missing English OCR data' }
+      - name: Prepare pinned stock models
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path build/windows120/models -Force | Out-Null
+          Invoke-WebRequest 'https://huggingface.co/spaces/mouseland/cellpose/resolve/b97a37a6237a937c862ad6b6a0ab4ca7adf0925e/cyto3' -OutFile build/windows120/models/cyto3
+          Invoke-WebRequest 'https://raw.githubusercontent.com/kevinjohncutler/omnipose-models/7730bdbf94d2e92d6f73b929c35d8870015eb682/nucleitorch_0' -OutFile build/windows120/models/nucleitorch_0
+          if ((Get-Item build/windows120/models/cyto3).Length -ne 26566255) { throw 'Incomplete cyto3 download' }
+          if ((Get-Item build/windows120/models/nucleitorch_0).Length -ne 26563614) { throw 'Incomplete nuclei download' }
+      - name: Verify shared UI and analysis transport
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          .venv/Scripts/python.exe -m pytest -q tests/test_windows_studio_parity.py tests/test_macos_compact_toolbar.py tests/test_model_device_selection.py tests/test_shared_cellpose_backend.py tests/test_macos_style_workbench.py tests/test_installer_files.py tests/test_packaging_r095.py tests/test_startup_splash.py tests/test_public_source.py
+          if ($LASTEXITCODE) { throw 'Release checks failed' }
+      - name: Build offline CPU and CUDA worker
+        shell: pwsh
+        run: |
+          & ./packaging/build_cellpose.ps1 -PythonPath "$PWD/.venv-cellpose/Scripts/python.exe" -ModelPath "$PWD/build/windows120/models/cyto3" -NucleiModelPath "$PWD/build/windows120/models/nucleitorch_0"
+      - name: Verify frozen model runtime
+        shell: pwsh
+        run: |
+          @'
+          import json, subprocess
+          from pathlib import Path
+          import numpy as np
+          y,x=np.mgrid[:128,:128]
+          image=sum(np.exp(-((y-cy)**2+(x-cx)**2)/80).astype(np.float32) for cy,cx in ((32,32),(32,96),(96,32),(96,96)))
+          source=Path('build/windows120/smoke.npy');np.save(source,image)
+          for model in ('cyto3','nuclei','cyto3_dapi_reviewed_v1','cyto3_he_fiber_boundary_v1','cyto3_laminin_final_v1','truefad_myotube'):
+              target=source.with_name(model+'.npy')
+              subprocess.run(['dist/cellpose/ScieFig_Cellpose.exe',str(source),str(target),'--model',model,'--device','cpu','--min-size','10'],check=True)
+              metadata=json.loads(target.with_suffix('.json').read_text())
+              assert metadata['model']==model and metadata['device']=='cpu'
+              result=np.load(target);assert result.shape==image.shape and np.isfinite(result).all()
+              print(model,metadata['device'],result.dtype)
+          '@ | .venv/Scripts/python.exe -
+          if ($LASTEXITCODE) { throw 'Frozen worker verification failed' }
+      - name: Freeze community application before installer compression
+        shell: pwsh
+        run: |
+          $env:PATH="$PWD/.venv/Scripts;$env:PATH"
+          & ./packaging/build_r10.ps1 -PublicKeyPath resources/license_public_key.pem -DistRoot "$PWD/artifacts/windows" -SkipInstaller
+      - name: Verify actual frozen activation-free startup
+        shell: pwsh
+        run: |
+          $exe=Join-Path $PWD 'artifacts/windows/ScieFig_R10/ScieFig_R10.exe'
+          $env:APPDATA=Join-Path $env:RUNNER_TEMP 'sciefig-startup-test-roaming'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP 'sciefig-startup-test-local'
+          New-Item -ItemType Directory -Force -Path $env:APPDATA,$env:LOCALAPPDATA | Out-Null
+          $env:SCIEFIG_RELEASE_SMOKE='1'
+          $env:SCIEFIG_RELEASE_SMOKE_MARKER=Join-Path $env:RUNNER_TEMP 'sciefig-startup-ok.txt'
+          $env:SCIEFIG_RELEASE_SMOKE_LOG=Join-Path $env:RUNNER_TEMP 'sciefig-startup-fault.txt'
+          $app=Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          if (-not $app.WaitForExit(120000)) { Stop-Process -Id $app.Id -Force; throw 'Frozen application failed to start and close' }
+          if ($app.ExitCode -ne 0) {
+            Write-Output "Main window close marker exists: $(Test-Path $env:SCIEFIG_RELEASE_SMOKE_MARKER)"
+            if (Test-Path $env:SCIEFIG_RELEASE_SMOKE_LOG) { Get-Content $env:SCIEFIG_RELEASE_SMOKE_LOG }
+            throw "Frozen startup/shutdown smoke failed: $($app.ExitCode)"
+          }
+          if (-not (Test-Path $env:SCIEFIG_RELEASE_SMOKE_MARKER) -or (Get-Content $env:SCIEFIG_RELEASE_SMOKE_MARKER -Raw) -ne 'main-window-closed') { throw 'Main window smoke marker missing' }
+      - name: Compile installer and matching community source
+        shell: pwsh
+        run: |
+          $folder=Join-Path $PWD 'artifacts/windows/ScieFig_R10'
+          .venv/Scripts/python.exe packaging/installer_files.py $folder build/r10/community_files.iss
+          if ($LASTEXITCODE) { throw 'Installer manifest failed' }
+          & ISCC.exe "/DDistDir=$folder" "/DOutputDir=$PWD/artifacts/windows" "/DIconFile=$PWD/resources/icons/sciefig_app_icon.ico" "/DFilesList=$PWD/build/r10/community_files.iss" packaging/ScieFig_R10.iss
+          if ($LASTEXITCODE) { throw 'Community installer failed' }
+          Move-Item -LiteralPath "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Setup.exe" -Destination "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Setup.exe"
+          git archive --format=zip --output="artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Windows_source.zip" HEAD
+          if ($LASTEXITCODE) { throw 'Source archive failed' }
+          Copy-Item -LiteralPath docs/DEPENDENCY_SOURCES.json -Destination artifacts/windows/DEPENDENCY_SOURCES.json
+          $installer=Get-Item "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Setup.exe"
+          if ($installer.Length -ge 2GB) { throw 'Installer exceeds GitHub single-file limit' }
+      - name: Publish directly from GitHub runner
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release=gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,targetCommitish 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $existing=$release | ConvertFrom-Json
+            if (-not $existing.isDraft -or $existing.targetCommitish -ne $env:GITHUB_SHA) { throw 'Refusing to replace a published release or another source revision' }
+          } else {
+            gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --draft --title "ScieFig Community $env:RELEASE_VERSION" --notes-file docs/COMMUNITY_RELEASE_NOTES.md
+            if ($LASTEXITCODE) { throw 'Release creation failed' }
+          }
+          gh release upload $env:RELEASE_TAG "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Setup.exe" "artifacts/windows/ScieFig_${env:RELEASE_VERSION}_Community_Windows_source.zip" "artifacts/windows/DEPENDENCY_SOURCES.json" --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE) { throw 'Release asset upload failed' }
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --latest --title "ScieFig Community $env:RELEASE_VERSION" --notes-file docs/COMMUNITY_RELEASE_NOTES.md
+          if ($LASTEXITCODE) { throw 'Release publication failed' }

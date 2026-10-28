@@ -1,0 +1,18 @@
+ScieFig
+Copyright (C) 2026 pamelah-233 and ScieFig contributors.
+
+Original ScieFig application source is being prepared for distribution under
+AGPL-3.0-only. See LICENSE for the complete license. Contributors retain copyright
+to their own contributions. Third-party copyright notices and licenses remain
+applicable; existing grants are not revoked here.
+
+The application license does not relicense third-party software, model
+weights, datasets, paper figures, or user research materials. See
+THIRD_PARTY_NOTICES.md and packaging/models/PUBLIC_MODEL_STATUS.json.
+
+ScieFig is the project name. No trademark registration is asserted here.
+The software license does not grant trademark rights or official endorsement.
+See TRADEMARKS.md for attribution and derivative-distribution guidance.
+
+Scientific measurements require verification against the original data.
+No warranty of segmentation accuracy, fitness, or clinical suitability is given.

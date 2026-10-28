@@ -1,0 +1,25 @@
+{
+  "name": "HE 大小核联合识别",
+  "algorithm": "he_refined_nuclei_v1",
+  "description": "保留原有两份方案。本方案合并完整核体内的浅凹分界，再用独立局部对比补查弱核并按重叠和核体距离去重。与纤维分割独立，自动识别仍需复核。",
+  "parameters": {
+    "stain": "he", "method": "he_refined", "diameter_px": 12,
+    "min_area_px": 8, "max_area_px": 800, "sensitivity": 1.0,
+    "he_settings": {
+      "clip_percentile": 99.0, "smooth_sigma": 0.65, "threshold_fraction": 0.45,
+      "closing_radius_fraction": 0.08, "opening_radius_fraction": 0.13,
+      "max_hole_diameter_fraction": 1.5, "core_blue_fraction": 0.12,
+      "core_blue_margin": 2.0, "maximum_punctum_fraction": 0.25,
+      "seed_distance_fraction": 0.45, "minimum_seed_radius_fraction": 0.2,
+      "minimum_circularity": 0.35, "peak_prominence_fraction": 0.125,
+      "supplement_min_area_fraction": 0.25
+    },
+    "local_he_settings": {
+      "clip_percentile": 99.0, "smooth_sigma": 0.65, "background_scale": 1.0,
+      "contrast_threshold_fraction": 0.25, "signal_threshold_fraction": 0.4,
+      "curvature_scale": 0.2, "curvature_ratio": 0.04,
+      "minimum_width_fraction": 0.22, "seed_distance_fraction": 0.4,
+      "minimum_circularity": 0.25
+    }
+  }
+}

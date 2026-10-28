@@ -1,0 +1,14 @@
+{
+  "model_id": "cyto3_laminin_final_v1",
+  "base_model": "cyto3",
+  "cellpose_version": "3.1.1.3",
+  "trained_date": "2026-10-23",
+  "epochs": 40,
+  "training": "18 user-reviewed partial fiber contours from 2 Laminin cross-section images; EX1 lumen excluded; reviewed C2 separator weighted 8x; unmarked regions ignored",
+  "reference_parameters": {"diameter_px": 70, "min_area_px": 60, "normalization_percentiles": [1,99]},
+  "status": "experimental optional alternative; user requested coexistence with original cyto3",
+  "limitations": "Failed local replacement criteria. C2a/C2b remain merged; not validated for automatic batch quantification.",
+  "partial_reference_mean_iou": {"A": 0.7819, "B": 0.7341, "C": 0.5527},
+  "original_red70_partial_reference_mean_iou": {"A": 0.7950, "B": 0.6391, "C": 0.6359}
+}
+

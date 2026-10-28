@@ -1,0 +1,13 @@
+{
+  "name": "DAPI 轮廓适配",
+  "parameters": {
+    "method": "cellpose_cyto3_dapi_reviewed_v1",
+    "diameter_px": 25,
+    "min_area_px": 50,
+    "max_area_px": 2000,
+    "sensitivity": 1,
+    "cellpose_input": "tile_normalization"
+  },
+  "scope": "Optional DAPI model; original cyto3 remains available. Reviewed local labels plus public training data, 2026-10-23. No universal boundary or detection advantage claimed."
+}
+

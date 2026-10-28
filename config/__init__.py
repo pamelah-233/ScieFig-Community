@@ -1,0 +1,2 @@
+"""Configuration resources for ScieFig."""
+

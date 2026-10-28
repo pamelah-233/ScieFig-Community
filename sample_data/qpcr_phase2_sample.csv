@@ -1,0 +1,39 @@
+Instrument Export,Demo Applied Biosystems
+Run,ScieFig Phase 2
+Well,Sample Name,Target Name,CT
+A01,siCtrl_bio1_tech1,GAPDH,20.1
+A02,siCtrl_bio1_tech2,GAPDH,20.2
+A03,siCtrl_bio1_tech3,GAPDH,20.0
+A04,siCtrl_bio1_tech1,SPNS1,25.1
+A05,siCtrl_bio1_tech2,SPNS1,25.0
+A06,siCtrl_bio1_tech3,SPNS1,25.2
+B01,siCtrl_bio2_tech1,GAPDH,20.4
+B02,siCtrl_bio2_tech2,GAPDH,20.5
+B03,siCtrl_bio2_tech3,GAPDH,20.3
+B04,siCtrl_bio2_tech1,SPNS1,25.5
+B05,siCtrl_bio2_tech2,SPNS1,25.6
+B06,siCtrl_bio2_tech3,SPNS1,25.4
+C01,siCtrl_bio3_tech1,GAPDH,20.2
+C02,siCtrl_bio3_tech2,GAPDH,20.1
+C03,siCtrl_bio3_tech3,GAPDH,20.3
+C04,siCtrl_bio3_tech1,SPNS1,25.2
+C05,siCtrl_bio3_tech2,SPNS1,25.3
+C06,siCtrl_bio3_tech3,SPNS1,25.1
+D01,siSPNS1_bio1_tech1,GAPDH,20.2
+D02,siSPNS1_bio1_tech2,GAPDH,20.3
+D03,siSPNS1_bio1_tech3,GAPDH,20.1
+D04,siSPNS1_bio1_tech1,SPNS1,28.0
+D05,siSPNS1_bio1_tech2,SPNS1,28.1
+D06,siSPNS1_bio1_tech3,SPNS1,28.2
+E01,siSPNS1_bio2_tech1,GAPDH,20.5
+E02,siSPNS1_bio2_tech2,GAPDH,20.6
+E03,siSPNS1_bio2_tech3,GAPDH,20.4
+E04,siSPNS1_bio2_tech1,SPNS1,28.6
+E05,siSPNS1_bio2_tech2,SPNS1,28.5
+E06,siSPNS1_bio2_tech3,SPNS1,28.7
+F01,siSPNS1_bio3_tech1,GAPDH,20.3
+F02,siSPNS1_bio3_tech2,GAPDH,20.4
+F03,siSPNS1_bio3_tech3,GAPDH,20.2
+F04,siSPNS1_bio3_tech1,SPNS1,28.2
+F05,siSPNS1_bio3_tech2,SPNS1,28.3
+F06,siSPNS1_bio3_tech3,SPNS1,28.4

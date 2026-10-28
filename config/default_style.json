@@ -1,0 +1,12 @@
+{
+  "preset": "Nature",
+  "font": "Arial",
+  "font_size_label": 7,
+  "font_size_tick": 6,
+  "palette": ["#999999", "#d97757", "#6b7fb8"],
+  "bar_fill": "tint",
+  "axis_width": 0.5,
+  "spines_top": false,
+  "spines_right": false
+}
+

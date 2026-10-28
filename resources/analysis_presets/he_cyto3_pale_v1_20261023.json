@@ -1,0 +1,25 @@
+{
+  "name": "HE 浅小核补查",
+  "algorithm": "he_cyto3_pale_v1",
+  "description": "用户确认的补查与误检筛选方案。复用原cyto3，不替换原有方法或权重。直径和面积仍可按图调整。",
+  "parameters": {
+    "stain": "he",
+    "method": "cellpose_cyto3_he_pale_v1",
+    "diameter_px": 12,
+    "min_area_px": 8,
+    "max_area_px": 2000,
+    "sensitivity": 1.0,
+    "he_pale_settings": {
+      "baseline_tile_px": 128,
+      "supplement_tile_px": 32,
+      "supplement_diameter_cap": 8.0,
+      "supplement_min_area_px": 5,
+      "supplement_max_area_px": 160,
+      "supplement_cellprob_threshold": -0.5,
+      "min_solidity": 0.6,
+      "min_core_to_rim": 1.25
+    }
+  },
+  "acceptance": "2026-10-23 用户确认：与原方法并列存在。四个开发区域保留新增9个匹配，新增FP由5减到2；不是独立盲测或所有图像准确率保证。"
+}
+

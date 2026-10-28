@@ -1,0 +1,41 @@
+{
+  "checked_on": "2026-10-27",
+  "purpose": "Version-specific directions to corresponding upstream source. Attach this record next to community binaries and recheck for the actual build versions.",
+  "components": [
+    {
+      "component": "PyQt6",
+      "version": "6.11.0",
+      "source_url": "https://files.pythonhosted.org/packages/8b/47/b25c13eca5bebc6505394d0223e46d7ebf0c57dcac2ed908d7d19b18ab6b/pyqt6-6.11.0.tar.gz",
+      "filename": "pyqt6-6.11.0.tar.gz",
+      "provider": "PyPI source distribution"
+    },
+    {
+      "component": "PyQt6-sip",
+      "version": "13.11.1",
+      "source_url": "https://files.pythonhosted.org/packages/90/24/a753e1af94b9ae5b2da63d4598457308da3cdbf0838c959381db086ccc86/pyqt6_sip-13.11.1.tar.gz",
+      "filename": "pyqt6_sip-13.11.1.tar.gz",
+      "provider": "PyPI source distribution"
+    },
+    {
+      "component": "PyMuPDF",
+      "version": "1.27.2.3",
+      "source_url": "https://files.pythonhosted.org/packages/22/32/708bedc9dde7b328d45abbc076091769d44f2f24ad151ad92d56a6ec142b/pymupdf-1.27.2.3.tar.gz",
+      "filename": "pymupdf-1.27.2.3.tar.gz",
+      "provider": "PyPI source distribution"
+    },
+    {
+      "component": "Qt",
+      "version": "6.11.0",
+      "source_url": "https://download.qt.io/archive/qt/6.11/6.11.0/single/qt-everywhere-src-6.11.0.tar.xz",
+      "provider": "Official source archive",
+      "url_checked": true
+    },
+    {
+      "component": "MuPDF",
+      "version": "1.27.2",
+      "source_url": "https://mupdf.com/downloads/archive/mupdf-1.27.2-source.tar.gz",
+      "provider": "Official source archive",
+      "url_checked": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "HE 组织边界适配",
+  "model": "cyto3_he_fiber_boundary_v1",
+  "parameters": {
+    "he_fiber_segmentation_method": "cellpose_cyto3_he_fiber_boundary_v1",
+    "he_fiber_cellpose_diameter_px": 50,
+    "min_object_area_px": 60,
+    "max_object_area_px": 0
+  },
+  "provenance": "HE fiber run02, final60 epochs, scale_range1.0,15 reviewed training fibers; user requested coexistence on2026-10-23.",
+  "limitations": "19-reference development comparison;50px boundary matching improves in this small set,90px includes regressions. No universal superiority or replacement claim."
+}
+

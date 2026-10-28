@@ -1,0 +1,108 @@
+{
+  "Nature": {
+    "id": "nature",
+    "display_name": "Nature",
+    "dpi": 600,
+    "color_mode": "RGB",
+    "width_mm": 89,
+    "figure_font": "Arial",
+    "canvas": {
+      "single_column_width_mm": 89,
+      "double_column_width_mm": 183,
+      "default_height_mm": 230,
+      "margin_mm": 2,
+      "background_color": "#FFFFFF"
+    },
+    "export": {
+      "primary_format": "svg",
+      "secondary_formats": ["pdf", "tiff", "png"],
+      "dpi": 600,
+      "svg_fonttype": "none",
+      "pdf_fonttype": 42,
+      "ps_fonttype": 42,
+      "tiff_compression": "lzw"
+    },
+    "typography": {
+      "font_family": "Arial",
+      "fallbacks": ["DejaVu Sans", "Liberation Sans"],
+      "base_font_size_pt": 7,
+      "axis_label_size_pt": 8,
+      "tick_label_size_pt": 7,
+      "legend_size_pt": 7,
+      "panel_label_size_pt": 8,
+      "panel_label_weight": "bold",
+      "panel_label_case": "lowercase"
+    },
+    "palette": {
+      "blue_main": "#0F4D92",
+      "blue_secondary": "#3775BA",
+      "green_1": "#DDF3DE",
+      "green_2": "#AADCA9",
+      "green_3": "#8BCF8B",
+      "red_1": "#F6CFCB",
+      "red_2": "#E9A6A1",
+      "red_strong": "#B64342",
+      "neutral_light": "#CFCECE",
+      "neutral_mid": "#767676",
+      "neutral_dark": "#4D4D4D",
+      "neutral_black": "#272727",
+      "teal": "#42949E",
+      "violet": "#9A4D8E",
+      "magenta": "#EA84DD"
+    },
+    "semantic_roles": {
+      "control": "neutral_black",
+      "baseline": "neutral_black",
+      "treatment_primary": "blue_main",
+      "treatment_secondary": "green_3",
+      "highlight": "red_strong",
+      "reference": "neutral_mid",
+      "bar_edge": "neutral_black",
+      "point_edge": "neutral_black"
+    },
+    "axes": {
+      "show_top_spine": false,
+      "show_right_spine": false,
+      "axis_line_width_pt": 0.6,
+      "tick_width_pt": 0.6,
+      "tick_length_pt": 3
+    },
+    "bar_scatter_sem": {
+      "bar_fill_color": "#FFFFFF",
+      "bar_width_fraction": 0.58,
+      "bar_line_width_pt": 0.9,
+      "point_size_pt": 16,
+      "point_line_width_pt": 0.35,
+      "jitter_fraction": 0.08,
+      "sem_line_width_pt": 0.8,
+      "sem_cap_size_pt": 3,
+      "sem_cap_thick_pt": 0.8
+    },
+    "significance_bracket": {
+      "line_width_pt": 0.7,
+      "step_fraction": 0.16,
+      "height_fraction": 0.18,
+      "label_offset_fraction": 0.22
+    },
+    "image_plate": {
+      "background_color": "#000000",
+      "context_color": "#B8B8B8",
+      "channel_cyan": "#22D7E6",
+      "channel_magenta": "#FF2AD4",
+      "scale_bar_color": "#FFFFFF",
+      "label_color": "#FFFFFF"
+    }
+  },
+  "Cell": {
+    "dpi": 600,
+    "color_mode": "RGB",
+    "width_mm": 89,
+    "figure_font": "Arial"
+  },
+  "Science": {
+    "dpi": 600,
+    "color_mode": "RGB",
+    "width_mm": 89,
+    "figure_font": "Arial"
+  }
+}

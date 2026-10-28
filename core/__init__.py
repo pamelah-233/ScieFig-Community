@@ -1,0 +1,2 @@
+"""ScieFig core package."""
+

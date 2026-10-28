@@ -1,0 +1,51 @@
+{
+  "manifest_version": "1.0",
+  "entries": [
+    {
+      "model_id": "cellpose_cyto3",
+      "display_name": "Cellpose cyto3 (research, ScieFig export)",
+      "version": "0.1.0",
+      "source_url": "file://artifacts/ai_pack/release/cellpose_cyto3_v0.1.0.onnx",
+      "sha256": "sha256:70cd701c225490dc63e35595070354a8100b0e243135749e63a263aa93cdacb9",
+      "file_size_bytes": 26513469,
+      "license": "Cellpose-derived research artifact; personal/research use only pending commercial audit due to CC-BY-NC training-data flag.",
+      "commercial_use_status": "restricted",
+      "input_schema": {
+        "input": {
+          "dtype": "float32",
+          "shape": [
+            1,
+            2,
+            256,
+            256
+          ],
+          "layout": "NCHW",
+          "channels": [
+            "primary_grayscale",
+            "secondary_optional_zero"
+          ],
+          "normalization": "per-channel percentile 1-99 -> 0..1, clipped"
+        }
+      },
+      "output_schema": {
+        "output0": {
+          "dtype": "float32",
+          "shape": [
+            1,
+            3,
+            256,
+            256
+          ],
+          "channels": [
+            "flow_y",
+            "flow_x",
+            "cellprob"
+          ]
+        }
+      },
+      "postprocess": "cellpose_flow_v1_minimal",
+      "cache_subdir": "cellpose_cyto3/0.1.0",
+      "description": "Research-only Cellpose cyto3-derived ONNX artifact for ScieFig AI-assisted object count. Not cleared for commercial distribution."
+    }
+  ]
+}

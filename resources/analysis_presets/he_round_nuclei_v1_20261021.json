@@ -1,0 +1,27 @@
+{
+  "name": "HE 浅染圆核识别",
+  "algorithm": "he_round_nuclei_v1",
+  "description": "针对扩大圆核及浅染中心重建完整核体，排除亮白空隙。独立于细小核基线，参数允许按图微调，自动结果仍需复核。",
+  "parameters": {
+    "stain": "he",
+    "method": "he_round",
+    "diameter_px": 12,
+    "min_area_px": 8,
+    "max_area_px": 800,
+    "sensitivity": 1.0,
+    "he_settings": {
+      "clip_percentile": 99.0,
+      "smooth_sigma": 0.65,
+      "threshold_fraction": 0.45,
+      "closing_radius_fraction": 0.08,
+      "opening_radius_fraction": 0.13,
+      "max_hole_diameter_fraction": 1.5,
+      "core_blue_fraction": 0.12,
+      "core_blue_margin": 2.0,
+      "maximum_punctum_fraction": 0.25,
+      "seed_distance_fraction": 0.45,
+      "minimum_seed_radius_fraction": 0.2,
+      "minimum_circularity": 0.35
+    }
+  }
+}

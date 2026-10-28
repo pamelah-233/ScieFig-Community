@@ -1,0 +1,19 @@
+{
+  "model": "truefad_myotube",
+  "display_name": "长肌管边界适配",
+  "original_model": "TRUEFAD Myotube detection",
+  "source": "https://github.com/AurBrun/TRUEFAD",
+  "original_file": "TRUEFAD-Myotube-detection.zip / keras_weights.hdf5",
+  "license_declared_by_original_rdf": "MIT",
+  "conversion": "Keras HWIO kernels transposed to PyTorch OIHW; original activations, asymmetric SAME padding and concatenation order preserved",
+  "training": "none",
+  "inference": "512x512 tiles, 1/99.8 percentiles, positive edge-distance overlap blending",
+  "verification": {
+    "author_test_max_abs_error": 0.0000010132789611816406,
+    "phase02_tile0_max_abs_error": 0.000001519918441772461,
+    "phase18_tile0_max_abs_error": 0.0000007748603820800781
+  },
+  "acceptance": "User accepted visual width delineation; full endpoints and instance counts remain subject to review",
+  "boundary_method": "center-guided paired phase-rim dynamic programming; not the author's Fiji macro"
+}
+

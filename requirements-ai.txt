@@ -1,0 +1,7 @@
+# ScieFig AI Pack optional runtime extras
+# Install:
+#   pip install -r requirements.txt -r requirements-ai.txt
+#
+# Core remains AI-free. Removing these does not break Core ScieFig.
+
+onnxruntime>=1.18.0,<2.0.0

@@ -1,0 +1,15 @@
+{
+  "name": "HE 通用核检测",
+  "algorithm": "cellpose_cyto3",
+  "description": "保留原cyto3单次检测，局部归一化128px；不做浅小核补查。直径和面积可按图调整。",
+  "parameters": {
+    "stain": "he",
+    "method": "cellpose_cyto3",
+    "diameter_px": 12,
+    "min_area_px": 8,
+    "max_area_px": 2000,
+    "sensitivity": 1.0,
+    "cellpose_input": "tile_normalization"
+  }
+}
+

@@ -1,0 +1,11 @@
+{
+  "name": "核专用检测 · 参考参数",
+  "parameters": {
+    "method": "cellpose_nuclei",
+    "diameter_px": 25,
+    "min_area_px": 8,
+    "max_area_px": 2000,
+    "sensitivity": 1,
+    "cellpose_input": "raw"
+  }
+}

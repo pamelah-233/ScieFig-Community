@@ -1,0 +1,5 @@
+# ScieFig AI Pack development/model-validation extras
+# Install when running AI Pack synthetic ONNX integration tests:
+#   pip install -r requirements.txt -r requirements-ai.txt -r requirements-ai-dev.txt
+
+onnx>=1.16.0,<2.0.0

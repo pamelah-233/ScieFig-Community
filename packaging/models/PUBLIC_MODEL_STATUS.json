@@ -1,0 +1,53 @@
+{
+  "review_date": "2026-10-27",
+  "application_source_license": "AGPL-3.0-only",
+  "public_weights_approved": true,
+  "note": "Application code is AGPL-3.0-only. Local adaptations are authorized by the maintainer and preserve upstream BSD3 notices; TRUEFAD uses its model RDF MIT declaration. Upstream training-data rights uncertainty is documented separately and is not waived.",
+  "models": [
+    {
+      "id": "cyto3",
+      "status": "upstream-BSD3-declared-training-data-risk-noted",
+      "code_license": "BSD-3-Clause",
+      "public_export": false,
+      "weights_license": "BSD-3-Clause (upstream clarification)",
+      "reason": "Stock files are fetched from pinned sources when building, not stored in this source tree."
+    },
+    {
+      "id": "nuclei",
+      "status": "upstream-BSD3-declared-training-data-risk-noted",
+      "code_license": "BSD-3-Clause",
+      "public_export": false,
+      "weights_license": "BSD-3-Clause (upstream clarification)",
+      "reason": "Stock files are fetched from pinned sources when building, not stored in this source tree."
+    },
+    {
+      "id": "cyto3_dapi_reviewed_v1",
+      "status": "maintainer-authorized-with-upstream-BSD3-notices",
+      "public_export": true,
+      "weights_license": "BSD-3-Clause; upstream data-rights note retained"
+    },
+    {
+      "id": "cyto3_he_fiber_boundary_v1",
+      "status": "maintainer-authorized-with-upstream-BSD3-notices",
+      "public_export": true,
+      "weights_license": "BSD-3-Clause; upstream data-rights note retained"
+    },
+    {
+      "id": "cyto3_laminin_final_v1",
+      "status": "maintainer-authorized-with-upstream-BSD3-notices",
+      "public_export": true,
+      "weights_license": "BSD-3-Clause; upstream data-rights note retained"
+    },
+    {
+      "id": "truefad_myotube",
+      "status": "model-MIT-declaration-and-attribution-preserved",
+      "public_export": true,
+      "weights_license": "MIT (model RDF)"
+    }
+  ],
+  "source": "https://github.com/MouseLand/cellpose/blob/v3.1.1.3/README.md",
+  "maintainer_authorized_local_adaptations": true,
+  "authorization_date": "2026-10-27",
+  "authorization_identity": "pamelah-233",
+  "upstream_clarification": "https://github.com/MouseLand/cellpose/issues/192"
+}

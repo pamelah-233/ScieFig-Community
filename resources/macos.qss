@@ -1,0 +1,106 @@
+/* Approved warm-gray studio: compact chrome, system type, shared controls. */
+QWidget { font-family: ".AppleSystemUIFont", "Helvetica Neue", "PingFang SC", "Segoe UI", "Microsoft YaHei UI"; font-size: 13px; }
+QLabel { background: transparent; }
+QPushButton, QToolButton {
+    color: #e9e5df; background: #2e2c2a; border: 1px solid #45403b;
+    border-radius: 5px; padding: 5px 9px; font-size: 12px; font-weight: 400;
+}
+QPushButton:hover, QToolButton:hover { background: #37322e; border-color: #776455; }
+QPushButton:pressed, QToolButton:pressed { background: #42362e; border-color: #a87e60; }
+QPushButton:checked, QToolButton:checked { background: #3d322b; border-color: #8d6951; color: #efd1b9; font-weight: 500; }
+QPushButton:disabled, QToolButton:disabled { color: #827a71; background: #262525; border-color: #37332f; }
+QPushButton:focus, QToolButton:focus { border-color: #c58d6c; }
+QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {
+    color: #e9e5df; background: #2e2c2a; border: 1px solid #45403b;
+    padding: 4px 7px; border-radius: 5px; font-size: 12px;
+    selection-background-color: #8d6951;
+}
+QComboBox { padding-right: 24px; }
+QComboBox::drop-down { width: 20px; border: none; }
+QComboBox QAbstractItemView { background: #2e2c2a; color: #e9e5df; selection-background-color: #494037; padding: 4px; }
+QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus { border-color: #a87e60; }
+QCheckBox, QRadioButton { background: transparent; spacing: 6px; font-size: 12px; }
+QLabel#DimLabel, QLabel#MutedLabel, QLabel#V9ToolbarHint { color: #b4ada5; font-size: 11px; }
+QLabel#SectionLabel, QLabel#V9ToolbarLabel { color: #c2b8ac; font-size: 12px; font-weight: 500; letter-spacing: 0px; }
+QLabel#V9RightPanelTitle { color: #e0d8cf; font-size: 13px; font-weight: 500; }
+QLabel#WorkflowHeadingHint, QLabel#WorkflowStepMeta { color: #b4ada5; font-size: 11px; font-weight: 400; }
+QLabel#WorkflowHeadingTitle, QLabel#MeasurementTaskHeading { font-size: 13px; font-weight: 500; padding: 4px 0; }
+QFrame#V9GlobalToolbar { min-height: 42px; max-height: 42px; background: #262525; }
+QFrame#V9GlobalToolbar QPushButton[toolbarIconOnly="true"] { padding: 5px 0px; }
+QFrame#V9Stagebar { min-height: 42px; max-height: 80px; background: #232221; }
+QLabel#V9StageTitle { font-size: 13px; font-weight: 500; }
+QFrame#V9RightPanelHeader { min-height: 34px; max-height: 34px; }
+QPushButton#V9ExportButton, QPushButton#PrimaryButton {
+    color: #201a16; background: #c58d6c; border-color: #c58d6c;
+    font-weight: 500; padding: 5px 12px; border-radius: 5px;
+}
+QPushButton#V9ExportButton:hover, QPushButton#PrimaryButton:hover { background: #d39a79; border-color: #d39a79; }
+QPushButton#V9ExportButton:pressed, QPushButton#PrimaryButton:pressed { background: #b98162; border-color: #b98162; }
+QPushButton#PrimaryButton:disabled { color: #827a71; background: #37332f; border-color: #45403b; }
+QPushButton#V9RailHideButton, QPushButton#V9RailReopenButton,
+QPushButton#V9RightPanelShowButton, QPushButton#V9RightPanelHideButton {
+    min-width: 0px; min-height: 0px; padding: 0px;
+    background: transparent; border-color: transparent; border-radius: 5px;
+}
+QPushButton#V9RailHideButton:hover, QPushButton#V9RailReopenButton:hover,
+QPushButton#V9RightPanelShowButton:hover, QPushButton#V9RightPanelHideButton:hover { background: #37322e; border-color: #45403b; }
+QPushButton#WorkflowInlineStep { font-size: 12px; padding: 3px 4px; border-radius: 5px; color: #bcb3a8; }
+QPushButton#WorkflowInlineStep:checked { color: #ecc3a6; background: #3d322b; border-color: #916d53; font-weight: 500; }
+QPushButton#WorkflowInlineStep:hover { background: #312c27; }
+QWidget#WorkflowInlineNavigation { background: #282624; border: 1px solid #45403b; border-radius: 6px; }
+QWidget#MeasurementPreviewGroup { background: #211f1d; border: 1px solid #615041; border-radius: 6px; }
+QLabel#PreviewGroupCaption { color: #b4ada5; font-size: 12px; padding: 0px 3px; }
+QLabel#WorkflowStepArrow { color: #82766a; font-size: 11px; padding: 0px 2px; }
+QPushButton[studioPreview="true"] { font-size: 12px; padding: 3px 5px; border-radius: 4px; background: transparent; border-color: transparent; }
+QPushButton[studioPreview="true"]:checked { background: #494037; color: #f3e3d3; border-color: #615041; }
+QPushButton#MeasurementTaskButton { padding: 5px 4px; border-radius: 5px; font-size: 12px; color: #e9e5df; background: #2e2c2a; }
+QPushButton#MeasurementTaskButton:checked { color: #efd1b9; background: #3d322b; border-color: #8d6951; font-weight: 500; }
+QFrame#WorkflowToolbarDivider { background: #4a423a; border: none; }
+QWidget#FluoroChannelToolbar { background: #211f1d; border: 1px solid #474039; border-radius: 6px; }
+QPushButton#FluoroChannelButton { background: transparent; border-color: transparent; padding: 3px 5px; font-size: 12px; border-radius: 4px; }
+QPushButton#FluoroChannelButton:checked { color: #f3e3d3; background: #494037; border-color: #615041; font-weight: 500; }
+QPushButton[studioZoom="true"] { padding: 0px; border-color: transparent; background: transparent; }
+QPushButton[studioZoom="true"]:hover { background: #37322e; border-color: #45403b; }
+QWidget#CanvasZoomControls { background: transparent; }
+QWidget#CanvasZoomControls QLabel#DimLabel { font-size: 12px; color: #c3bbb1; }
+QFrame#WorkflowActionFooter { border-top: 1px solid #3a3734; }
+QGroupBox[workflowGroup="true"] { border-top-color: #3a3734; margin-top: 14px; padding-top: 6px; }
+QGroupBox[workflowGroup="true"]::title { color: #c2b8ac; font-size: 12px; font-weight: 500; }
+QGroupBox[measurementTaskBody="true"] { border: none; margin: 0px; padding: 0px; }
+QTableWidget, QTableView {
+    font-family: ".AppleSystemUIFont", "PingFang SC", "Segoe UI", "Microsoft YaHei UI"; font-size: 12px;
+    background: #292725; alternate-background-color: #302d2a;
+    gridline-color: #3c3833; selection-background-color: #494037;
+    selection-color: #f3e3d3;
+}
+QTableWidget::item, QTableView::item { padding: 3px 7px; }
+QTableWidget::item:selected, QTableView::item:selected { background: #494037; color: #f3e3d3; }
+QHeaderView::section { color: #d8c4b2; font-size: 12px; font-weight: 500; padding: 5px 7px; border: none; border-bottom: 1px solid #45403b; }
+QTableCornerButton::section { background: #37322e; border: none; }
+QTableWidget[workflowGroupTable="true"] QCheckBox { margin-left: 21px; spacing: 0px; background: transparent; }
+QTableWidget#WorkflowExportTable QCheckBox { margin-left: 16px; spacing: 0px; background: transparent; }
+QToolTip { background: #37322e; color: #f3e3d3; border: 1px solid #65584d; padding: 6px; }
+QToolButton#WorkflowDisclosureToggle,
+QToolButton#WorkflowDisclosureToggle:hover,
+QToolButton#WorkflowDisclosureToggle:pressed,
+QToolButton#WorkflowDisclosureToggle:checked {
+    background: transparent; border: none; border-top: 1px solid #3a3734;
+    padding: 9px 0px; font-size: 12px; font-weight: 500;
+}
+QToolButton#WorkflowDisclosureToggle:hover { color: #e9e5df; }
+QStatusBar { color: #b4ada5; min-height: 32px; }
+QStatusBar QPushButton#V9LanguageButtonZh, QStatusBar QPushButton#V9LanguageButtonEn {
+    font-size: 12px; font-weight: 500; min-width: 36px; min-height: 18px;
+    padding: 3px 8px; border-radius: 5px;
+}
+QScrollBar:vertical { width: 8px; border: none; background: transparent; }
+QScrollBar:horizontal { height: 10px; border: none; background: transparent; }
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal { background: #65584d; border-radius: 4px; min-height: 24px; min-width: 24px; }
+QScrollBar::handle:horizontal { min-width: 32px; }
+QScrollBar::handle:horizontal:hover { background: #8d7562; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0px; height: 0px; border: none; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QSplitter#V9BodySplitter::handle { width: 4px; background: #262525; }
+QSplitter#V9BodySplitter::handle:hover { background: #8d6951; }
+/* Preserve the repaired native quit-dialog button metrics. */
+QMessageBox QPushButton { min-width: 96px; min-height: 22px; padding: 6px 14px; }

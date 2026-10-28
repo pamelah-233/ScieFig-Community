@@ -1,0 +1,46 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime and local logs
+logs/
+*.log
+*.tmp
+*.temp
+
+# Local interpreter/session files
+.Rhistory
+.python_history
+
+# Review/export artifacts
+*.zip
+*_review_*.zip
+*_review_*.md
+!ScieFig Design System.zip
+
+# Generated validation evidence
+validation_evidence/
+artifacts/ai_pack/release/
+*.onnx
+
+# Local virtual environments
+.venv/
+venv/
+env/
+
+# Generated macOS bundles, model runtimes and local UI previews
+.venv-cellpose/
+build/
+dist/
+design-demos/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
