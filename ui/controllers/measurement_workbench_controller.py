@@ -67,7 +67,7 @@ class MeasurementWorkbenchController(QObject):
             self._advanced_rows(f.ai_form,[f.ai_min_area_spin,f.ai_max_area_spin,f.ai_sensitivity_spin,
                 f.ai_allow_restricted_checkbox],f.ai_assisted_group.layout())
         self.selector.parentWidget().layout().removeWidget(self.selector)
-        self.selector_wrap=QWidget();pick=QVBoxLayout(self.selector_wrap);pick.setContentsMargins(14,8,14,12);pick.setSpacing(7)
+        self.selector_wrap=QWidget();pick=QVBoxLayout(self.selector_wrap);pick.setContentsMargins(10,8,10,12);pick.setSpacing(7)
         self.selector_wrap.setProperty('workflowPlain',True)
         pick.addWidget(bind_i18n(QLabel(),'task_select'));pick.addWidget(self.selector)
         if module=='fluoro':
@@ -286,4 +286,5 @@ class MeasurementWorkbenchController(QObject):
         readable_forms(self.stack)
         from ui.widgets.model_selection_hint import ModelSelectionHint
         for hint in self.panel.findChildren(ModelSelectionHint):hint.refresh()
+
 

@@ -3022,7 +3022,7 @@ _UI_TRANSLATIONS['en'].update({
     'fluoro_display_optimization':'Display optimization',
     'fluoro_display_strength':'Strength (- / +)',
     'fluoro_display_denoise':'Denoise',
-    'fluoro_display_background':'Background correction',
+    'fluoro_display_background':'Background',
     'fluoro_display_radius_hint':'Background radius in source pixels. Choose larger than the structures you want to preserve.',
     'fluoro_display_compare':'Unprocessed view',
     'fluoro_display_one_click':'Denoise channel',

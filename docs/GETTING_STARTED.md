@@ -1,9 +1,12 @@
+# macOS 1.2.2 安装 / Installation
+
+Mac 安装版不需要另装 Python、机器码或激活程序。当前 Mac 1.2.2 先供本地验收，确认后才公开下载。PKG 用于标准安装，DMG 用于替换已有安装；支持 Apple Silicon/macOS 14+。外接盘已有 ScieFig 时在原位置替换以避免重复图标。签名／系统安全提示及详细修复见 [macOS 说明](MACOS_1.2.2.md)。Mac 源码及 worker 构建均使用 Python 3.12。
+
 # ScieFig community source: getting started
 
 ## 中文
 
-这是基于 1.2.2 的社区源码准备版。源码启动无需机器码；已经发布的历史
-Windows 安装包仍遵循当时的激活规则，不能当作新的社区安装包分发。
+这是基于 1.2.2 的社区源码准备版。源码启动无需机器码；本仓库发布的社区版安装包无需激活；旧私有版安装包不是社区版。
 
 1. 安装 Python 3.14，创建虚拟环境。
 2. 安装依赖：`python -m pip install -r requirements.txt`。
@@ -49,3 +52,4 @@ in the source entrypoint. Historical installers have not been repackaged.
   are acquired separately from the pinned upstream sources. Data-rights notes remain applicable.
 - Read `THIRD_PARTY_NOTICES.md`, the model-status manifest, and
   `docs/OPEN_SOURCE_READINESS.md` before distributing a build.
+

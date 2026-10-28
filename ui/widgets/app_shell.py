@@ -221,6 +221,12 @@ class V9AppShell(QWidget):
             width = 34 if compact else button.sizeHint().width()
             button.setMaximumWidth(width)
             button.setMinimumWidth(width)
+        # Commit the compact minimum before the next native resize; otherwise
+        # a language change can retain the previous text-button minimum.
+        layout.invalidate()
+        layout.activate()
+        self.layout().invalidate()
+        self.layout().activate()
 
     def _build_body(self, module_selector: QWidget, stage_widget: QWidget, right_widget: QWidget) -> QWidget:
         self.body_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -667,4 +673,5 @@ class V9AppShell(QWidget):
 
     def _clamp_rail_width(self, width: int) -> int:
         return max(MIN_RAIL_WIDTH, min(int(width), MAX_RAIL_WIDTH))
+
 

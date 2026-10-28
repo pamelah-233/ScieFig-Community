@@ -1,13 +1,14 @@
 """All bundled neural methods honor the same explicit CPU/GPU selector."""
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
 import pytest
 
 
-@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('device', ['cpu', 'mps' if sys.platform == 'darwin' else 'cuda'])
 def test_background_analysis_keeps_device_selected_when_submitted(tmp_path, monkeypatch, device):
     from PyQt6 import QtCore
     from core.image_analysis import cellpose_backend as backend
@@ -16,13 +17,14 @@ def test_background_analysis_keeps_device_selected_when_submitted(tmp_path, monk
     monkeypatch.setattr(QtCore, 'QSettings', lambda *args: settings_class(
         str(tmp_path/'device.ini'), settings_class.Format.IniFormat))
     backend.set_cellpose_device_preference(device)
+    other = ('mps' if sys.platform == 'darwin' else 'cuda') if device == 'cpu' else 'cpu'
     seen = []
     def work():
         seen.append(backend.cellpose_device_preference())
-        backend.set_cellpose_device_preference('cpu' if device == 'cuda' else 'cuda')
+        backend.set_cellpose_device_preference(other)
         seen.append(backend.cellpose_device_preference())
     worker = _AnalysisWorker('two-pass-model', work)
-    backend.set_cellpose_device_preference('cpu' if device == 'cuda' else 'cuda')
+    backend.set_cellpose_device_preference(other)
     worker.run()
     assert seen == [device, device]
     assert backend.cellpose_device_preference() != device
@@ -30,7 +32,7 @@ def test_background_analysis_keeps_device_selected_when_submitted(tmp_path, monk
 
 @pytest.mark.parametrize('model', ['cyto3', 'nuclei', 'cyto3_dapi_reviewed_v1',
     'cyto3_he_fiber_boundary_v1', 'cyto3_laminin_final_v1'])
-@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('device', ['cpu', 'cuda', 'mps'])
 def test_every_cellpose_model_receives_and_verifies_device(monkeypatch, model, device):
     from core.image_analysis import cellpose_backend as backend
     monkeypatch.setattr(backend, 'worker_command', lambda: ['worker'])
@@ -69,8 +71,8 @@ def test_worker_never_silently_uses_cpu_for_unavailable_gpu(requested):
         worker.select_device(torch, requested)
 
 
-@pytest.mark.parametrize('reported', ['cuda', 'cpu'])
-@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('reported', ['cuda', 'mps', 'cpu'])
+@pytest.mark.parametrize('device', ['cpu', 'cuda', 'mps'])
 def test_truefad_uses_and_verifies_selected_device(monkeypatch, reported, device):
     from core.image_analysis import myotube_boundary as boundary, cellpose_backend as backend
     monkeypatch.setattr(backend, 'worker_command', lambda: ['worker'])
@@ -88,3 +90,4 @@ def test_truefad_uses_and_verifies_selected_device(monkeypatch, reported, device
     else:
         _, metadata = boundary.run_centers(np.zeros((8,10), np.uint8))
         assert metadata['device'] == device
+

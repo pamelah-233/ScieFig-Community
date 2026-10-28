@@ -1,0 +1,172 @@
+name: Community macOS 1.2.2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/community-release-macos.yml
+      - docs/MACOS_1.2.2.md
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish macOS downloads after local review is approved'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos-1.2.2
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      MACOS_VERSION: 1.2.2
+      MACOS_TAG: community-v1.2.2
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Prepare application and worker environments
+        run: |
+          test "$(uname -m)" = arm64
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt pyinstaller==6.22.3
+          python -m venv .venv-cellpose
+          .venv-cellpose/bin/python -m pip install -r packaging/requirements-cellpose-macos.txt
+      - name: Prepare offline models
+        run: |
+          mkdir -p build/macos/models
+          # These pinned copies match the weights used in the verified local application.
+          curl -fL --retry 3 --connect-timeout 20 --max-time 180 \
+            https://huggingface.co/spaces/mouseland/cellpose/resolve/b97a37a6237a937c862ad6b6a0ab4ca7adf0925e/cyto3 \
+            -o build/macos/models/cyto3
+          curl -fL --retry 3 --connect-timeout 20 --max-time 180 \
+            https://raw.githubusercontent.com/kevinjohncutler/omnipose-models/7730bdbf94d2e92d6f73b929c35d8870015eb682/nucleitorch_0 \
+            -o build/macos/models/nucleitorch_0
+          test "$(stat -f%z build/macos/models/cyto3)" = 26566255
+          test "$(stat -f%z build/macos/models/nucleitorch_0)" = 26563614
+      - name: Build bundled offline worker
+        run: |
+          .venv-cellpose/bin/python -m PyInstaller --noconfirm --onedir --console --name ScieFig_Cellpose \
+            --distpath build/macos/worker --workpath build/macos/worker-work --specpath build/macos \
+            --collect-all cellpose --copy-metadata cellpose --copy-metadata torch \
+            --exclude-module pytest --exclude-module matplotlib --exclude-module pandas \
+            --exclude-module IPython --exclude-module torchvision --exclude-module torchaudio \
+            --exclude-module onnx --exclude-module onnxruntime \
+            --add-data "$PWD/build/macos/models/cyto3:models" \
+            --add-data "$PWD/build/macos/models/nucleitorch_0:models" \
+            --add-data "$PWD/packaging/models:models" packaging/cellpose_worker.py
+          .venv-cellpose/bin/python packaging/collect_cellpose_licenses.py build/macos/worker/ScieFig_Cellpose/THIRD_PARTY_LICENSES
+          cp packaging/models/*.json packaging/models/*.yaml build/macos/worker/ScieFig_Cellpose/THIRD_PARTY_LICENSES/
+          .venv/bin/python - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          import numpy as np
+          y, x = np.mgrid[:128, :128]
+          image = np.zeros((128, 128), dtype=np.float32)
+          for cy, cx in ((32, 32), (32, 96), (96, 32), (96, 96)):
+              image += np.exp(-((y-cy)**2+(x-cx)**2)/80).astype(np.float32)
+          np.save('build/macos/worker-input.npy', image)
+          for name in ('cyto3', 'nuclei', 'cyto3_dapi_reviewed_v1', 'cyto3_he_fiber_boundary_v1', 'cyto3_laminin_final_v1', 'truefad_myotube'):
+              for device in ('cpu', 'mps'):
+                  output = Path(f'build/macos/{name}-{device}-smoke.npy')
+                  result = subprocess.run(['build/macos/worker/ScieFig_Cellpose/ScieFig_Cellpose',
+                      'build/macos/worker-input.npy', str(output), '--model', name, '--min-size', '10',
+                      '--device', device], capture_output=True, text=True)
+                  if device == 'mps' and result.returncode and 'Apple GPU (MPS) is unavailable' in result.stderr:
+                      print(name, 'MPS unavailable on this runner; explicit CPU choice verified')
+                      continue
+                  assert result.returncode == 0, result.stderr
+                  labels = np.load(output)
+                  metadata = json.loads(output.with_suffix('.json').read_text())
+                  assert labels.shape == image.shape and np.isfinite(labels).all()
+                  if name != 'truefad_myotube':
+                      assert labels.max() > 0
+                  else:
+                      assert metadata['output'] == 'native_center_response'
+                  assert metadata['model'] == name and metadata['device'] == device
+                  print(name, metadata['device'], int(labels.max()))
+          PY
+      - name: Verify focused macOS workflows
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_public_source.py tests/test_startup_splash.py tests/test_analysis_async.py tests/test_analysis_state_restore.py tests/test_measurement_history_panel.py tests/test_measurement_main_preview.py tests/test_module_defaults.py tests/test_model_device_feedback.py tests/test_model_device_selection.py tests/test_shared_cellpose_backend.py tests/test_composer_a_controls.py tests/test_ui_repairs_20260908.py tests/test_canvas_empty_copy.py tests/test_macos_port.py tests/test_macos_compact_toolbar.py tests/test_macos_workflow_tables.py tests/test_macos_style_workbench.py tests/test_measurement_provenance.py tests/test_rgb_import_composite.py
+      - name: Build application
+        run: |
+          .venv/bin/python packaging/build_macos.py --worker-dir build/macos/worker/ScieFig_Cellpose --output "$RUNNER_TEMP/ScieFig-release.noindex"
+          codesign --verify --deep --strict "$RUNNER_TEMP/ScieFig-release.noindex/ScieFig.app"
+      - name: Verify activation-free frozen startup and shutdown
+        run: |
+          .venv/bin/python - <<'PY_START'
+          import os, subprocess
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP'])
+          env=dict(os.environ, SCIEFIG_RELEASE_SMOKE='1', SCIEFIG_RELEASE_SMOKE_MARKER=str(temp/'startup-ok.txt'), SCIEFIG_RELEASE_SMOKE_LOG=str(temp/'startup-fault.txt'))
+          result=subprocess.run([str(temp/'ScieFig-release.noindex/ScieFig.app/Contents/MacOS/ScieFig')],env=env,timeout=120,capture_output=True,text=True)
+          assert result.returncode == 0, result.stderr
+          assert (temp/'startup-ok.txt').read_text() == 'main-window-closed'
+          PY_START
+      - name: Create installer and source archive
+        run: |
+          mkdir -p artifacts/macos
+          ln -s /Applications "$RUNNER_TEMP/ScieFig-release.noindex/Applications"
+          hdiutil create -volname "ScieFig ${MACOS_VERSION}" -srcfolder "$RUNNER_TEMP/ScieFig-release.noindex" \
+            -format UDZO -fs HFS+ "artifacts/macos/ScieFig_${MACOS_VERSION}_macOS_arm64.dmg"
+          hdiutil verify "artifacts/macos/ScieFig_${MACOS_VERSION}_macOS_arm64.dmg"
+          pkgbuild --component "$RUNNER_TEMP/ScieFig-release.noindex/ScieFig.app" --install-location /Applications --identifier com.sciefig.desktop --version "$MACOS_VERSION" "artifacts/macos/ScieFig_${MACOS_VERSION}_macOS_arm64.pkg"
+          pkgutil --payload-files "artifacts/macos/ScieFig_${MACOS_VERSION}_macOS_arm64.pkg" > "$RUNNER_TEMP/pkg-payload.txt"
+          grep -q ScieFig.app/Contents/MacOS/ScieFig "$RUNNER_TEMP/pkg-payload.txt"
+          git archive --format=zip --output="artifacts/macos/ScieFig_${MACOS_VERSION}_macOS_source.zip" HEAD
+          ls -lh artifacts/macos
+      - name: Retain built packages
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ScieFig-macOS-1.2.2
+          path: artifacts/macos/*
+          compression-level: 0
+      - name: Publish macOS release after uploads complete
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/macos-v${MACOS_VERSION}" >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/macos-v${MACOS_VERSION}" -f "sha=$GITHUB_SHA" >/dev/null
+          fi
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/macos-v${MACOS_VERSION}" --jq .object.sha)" = "$GITHUB_SHA"
+          gh release view "$MACOS_TAG" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/windows-before.json"
+          gh release upload "$MACOS_TAG" artifacts/macos/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$MACOS_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/release-notes.md"
+          python - <<'PY_NOTES'
+          import os, json
+          from pathlib import Path
+          p=Path(os.environ['RUNNER_TEMP'])/'release-notes.md'
+          old=p.read_text(); marker='<!-- macos-1.2.2 -->'
+          old=old.split(marker)[0].rstrip()
+          p.write_text(old+'\n\n'+marker+'\n'+Path('docs/MACOS_1.2.2.md').read_text())
+          PY_NOTES
+          gh release edit "$MACOS_TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/release-notes.md"
+          gh release view "$MACOS_TAG" --repo "$GITHUB_REPOSITORY" --json assets > "$RUNNER_TEMP/assets-after.json"
+          python - <<'PY_VERIFY'
+          import json,os
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP'])
+          before=json.loads((temp/'windows-before.json').read_text())['assets']
+          after=json.loads((temp/'assets-after.json').read_text())['assets']
+          by_name={a['name']:a for a in after}
+          for item in before:
+              if not '_macOS_' in item['name']:
+                  assert by_name[item['name']]['id']==item['id'] and by_name[item['name']]['size']==item['size']
+          for suffix in ('arm64.dmg','arm64.pkg','source.zip'):
+              name='ScieFig_1.2.2_macOS_'+suffix
+              assert by_name[name]['state']=='uploaded' and by_name[name]['size']>0
+          PY_VERIFY

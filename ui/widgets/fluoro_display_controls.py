@@ -27,6 +27,7 @@ class FluoroDisplayControls(QGroupBox):
         form.addRow(bind_i18n(QLabel(),'fluoro_display_strength'),self.strength)
         form.addRow(bind_i18n(QLabel(),'fluoro_display_denoise'),self.denoise)
         self.background=bind_i18n(QCheckBox(),'fluoro_display_background')
+        bind_i18n(self.background,'workflow_background_method','toolTip')
         self.background.setObjectName('FluoroDisplayBackground')
         form.addRow(self.background,self.radius)
         for field in (self.strength,self.denoise,self.radius):
@@ -107,3 +108,4 @@ class FluoroDisplayControls(QGroupBox):
 
     def _reset(self):
         self.set_settings({});self._emit()
+
