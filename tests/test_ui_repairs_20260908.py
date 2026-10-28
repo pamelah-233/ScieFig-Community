@@ -519,6 +519,9 @@ def test_brightfield_completed_analysis_paths_keep_original_overlay_toggle(tmp_p
 def test_ihc_source_without_overlay_shows_disabled_overlay_button() -> None:
     app = _app()
     workspace = IHCWorkspace(QLabel("context"))
+    # MainWindow hosts this detached workflow panel beside the canvas. Supply
+    # the same visible host in the standalone workspace test.
+    workspace.layout().addWidget(workspace.workflow_panel)
     workspace.show()
     workspace.set_step(0)
     workspace.canvas.set_pixmap(_pixmap("#AA0000"), title="Histology / IHC preview")
@@ -652,4 +655,5 @@ def test_qss_chinese_roi_and_ihc_sidepanel_screenshots(desktop_screen, tmp_path:
         set_language(previous)
         app.setStyleSheet("")
         _close(window, app)
+
 
