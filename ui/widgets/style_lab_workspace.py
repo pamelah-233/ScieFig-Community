@@ -54,6 +54,10 @@ class StyleLabWorkspace(QWidget):
     def retranslate(self):
         retranslate_bound_widgets(self)
         if self.local_extraction is not None:
+            # The recursive translation restores Fit text; the studio zoom
+            # controls use icons and must refresh their translated tooltips.
+            self.local_extraction.source_board.canvas.zoom_controls.retranslate()
+            self.local_extraction.preview_board.zoom_controls.retranslate()
             self.reset_defaults_button.setAccessibleName(self.reset_defaults_button.text())
             self.local_extraction.btn_saved.setText("已保存样式" if get_language() == "zh" else "Saved styles")
             studio=self.local_extraction.studio_ui
@@ -158,4 +162,5 @@ class StyleLabWorkspace(QWidget):
             super().closeEvent(event)
         else:
             event.ignore()
+
 

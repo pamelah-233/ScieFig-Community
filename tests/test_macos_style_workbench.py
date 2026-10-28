@@ -146,6 +146,9 @@ def test_narrow_toolbars_keep_complete_click_targets_and_restore_labels(workspac
                 assert button.toolTip() and button.accessibleName()
                 assert button.text()==('' if button.property('styleIconOnly') else label)
         for board,controls in ((e.source_board,e.source_board.canvas.zoom_controls),(e.preview_board,e.preview_board.zoom_controls)):
+            workspace.retranslate()
+            assert not controls.fit_button.text()
+            assert controls.fit_button.toolTip() and not controls.fit_button.icon().isNull()
             header=e.studio_ui.source_header if board is e.source_board else e.studio_ui.preview_header
             for button in (controls.fit_button,controls.zoom_out_button,controls.zoom_in_button):
                 rect=button.rect();rect.moveTopLeft(button.mapTo(header,QPoint()))
