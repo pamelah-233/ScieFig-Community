@@ -1,14 +1,14 @@
 ## macOS 1.2.2 / Apple Silicon
 
-本地验收阶段：安装包已纳入构建流程，GitHub Mac 下载暂不公开，待用户确认本机版本后发布。
+已于 2026-10-28 完成本机验收并获准发布。构建源码固定为 `f453541b70eeb69a39d44b84c96ff8bcb42d58d9`，标签 `macos-v1.2.2`；安装包取自该提交成功的 macOS Actions 构建。
 
 与本页 Windows 1.2.2 并列提供，基于同一公开 ScieFig-Community 源码和修复。本版本无机器码激活、许可证校验入口或额外验证工具；安装后直接运行。
 
 | 下载 | 用途 |
 | --- | --- |
-| `ScieFig_1.2.2_macOS_arm64.pkg` | 双击进入 macOS 标准安装程序，安装到 Applications。 |
-| `ScieFig_1.2.2_macOS_arm64.dmg` | 打开后拖动 ScieFig 到 Applications，也可替换外接盘上已有的安装版。 |
-| `ScieFig_1.2.2_macOS_source.zip` | 此次 Mac 构建的固定源码，标签 `macos-v1.2.2`。Windows 原有源码附件与安装包保持原样。 |
+| [ScieFig_1.2.2_macOS_arm64.pkg](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_1.2.2_macOS_arm64.pkg) | 双击进入 macOS 标准安装程序，安装到 Applications。 |
+| [ScieFig_1.2.2_macOS_arm64.dmg](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_1.2.2_macOS_arm64.dmg) | 打开后拖动 ScieFig 到 Applications，也可替换外接盘上已有的安装版。 |
+| [ScieFig_1.2.2_macOS_source.zip](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_1.2.2_macOS_source.zip) | 此次 Mac 构建的固定源码，标签 `macos-v1.2.2`。Windows 原有源码附件与安装包保持原样。 |
 
 支持 Apple Silicon（M 系列），构建目标 macOS 14 及以上；不是 Intel 安装包。软件内置 Python、Qt、科学计算库、Cellpose worker 和六套离线模型，不要求另装 Python 或下载模型。CPU 与 Apple GPU（MPS）可选，结果记录实际使用设备；GPU 不可用时明确提示，不静默改用 CPU。
 
@@ -24,7 +24,7 @@
 - 修正 Mac 英文最窄侧栏下通道背景校正复选框越界、测量任务按钮退化成单列挤占参数区的问题；保留全部操作入口和原有信号。
 - 修正实际安装版切换语言后风格工作台缩放按钮恢复文字导致裁切的问题，沿用统一图标并更新本地化提示。
 
-详细核查依据见 [Mac 对照记录](https://github.com/pamelah-233/ScieFig-Community/blob/main/docs/MACOS_1.2.2_AUDIT.md)。云端发布前执行 Mac 相关回归、六模型 CPU/MPS 冒烟、无激活冻结版启动／退出、签名及安装包内容检查；不表示全部图片和算法精度都已验收。
+详细核查依据见 [Mac 对照记录](https://github.com/pamelah-233/ScieFig-Community/blob/main/docs/MACOS_1.2.2_AUDIT.md)。本机六模型 CPU/MPS 共 12 组调用通过。云端发布前执行 Mac 相关回归、六模型 CPU 冒烟和可用时的 MPS 检查、无激活冻结版启动／退出、签名及安装包内容检查；虚拟 runner 没有 MPS 时明确跳过，不冒充 GPU 验证。不表示全部图片和算法精度都已验收。
 
 ### 安装说明与边界
 

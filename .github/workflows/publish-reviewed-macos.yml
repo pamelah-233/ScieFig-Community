@@ -1,0 +1,76 @@
+name: Publish reviewed macOS 1.2.2
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publish-reviewed-macos.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-reviewed-macos-1.2.2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN: '40708265947'
+      SOURCE_SHA: f453541b70eeb69a39d44b84c96ff8bcb42d58d9
+      RELEASE_TAG: community-v1.2.2
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Download the approved successful macOS build
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$RUNNER_TEMP/build.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run=json.loads((Path(os.environ['RUNNER_TEMP'])/'build.json').read_text())
+          assert run['status']=='completed' and run['conclusion']=='success', run['conclusion']
+          assert run['head_sha']==os.environ['SOURCE_SHA']
+          assert run['repository']['full_name']==os.environ['GITHUB_REPOSITORY']
+          PY
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name ScieFig-macOS-1.2.2 --dir artifacts/macos
+          for file in ScieFig_1.2.2_macOS_arm64.dmg ScieFig_1.2.2_macOS_arm64.pkg ScieFig_1.2.2_macOS_source.zip; do
+            test -s "artifacts/macos/$file"
+          done
+      - name: Publish alongside Windows and preserve its assets
+        run: |
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/macos-v1.2.2" >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/tags/macos-v1.2.2 -f "sha=$SOURCE_SHA" >/dev/null
+          fi
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/macos-v1.2.2" --jq .object.sha)" = "$SOURCE_SHA"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,body > "$RUNNER_TEMP/before.json"
+          gh release upload "$RELEASE_TAG" artifacts/macos/* --repo "$GITHUB_REPOSITORY" --clobber
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP'])
+          old=json.loads((temp/'before.json').read_text())['body']
+          marker='<!-- macos-1.2.2 -->'
+          (temp/'notes.md').write_text(old.split(marker)[0].rstrip()+'\n\n'+marker+'\n'+Path('docs/MACOS_1.2.2.md').read_text())
+          PY
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --title 'ScieFig 1.2.2 — Windows & macOS' --notes-file "$RUNNER_TEMP/notes.md"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,body > "$RUNNER_TEMP/after.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP'])
+          before=json.loads((temp/'before.json').read_text())
+          after=json.loads((temp/'after.json').read_text())
+          assets={a['name']:a for a in after['assets']}
+          for item in before['assets']:
+              if '_macOS_' not in item['name']:
+                  assert assets[item['name']]['id']==item['id'] and assets[item['name']]['size']==item['size']
+          assert after['body'].startswith(before['body'].split('<!-- macos-1.2.2 -->')[0].rstrip())
+          for suffix in ('arm64.dmg','arm64.pkg','source.zip'):
+              item=assets['ScieFig_1.2.2_macOS_'+suffix]
+              assert item['state']=='uploaded' and item['size']>0
+              print(item['name'], item['size'])
+          PY

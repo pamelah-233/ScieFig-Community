@@ -3,7 +3,7 @@
 科研数据与图像分析、绘图和组版。<br>
 Scientific data and image analysis, plotting and figure assembly.
 
-[下载 Windows 1.2.2 / Download Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) · [使用说明 / Getting started](docs/GETTING_STARTED.md)
+[下载 Windows 1.2.2 / Download Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) · [下载 macOS 1.2.2 / Download macOS 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) · [使用说明 / Getting started](docs/GETTING_STARTED.md)
 
 ## qPCR
 
@@ -73,3 +73,4 @@ Use Python 3.14, install `requirements.txt`, and run `python main.py`. See the [
 For custom features or feedback, contact the maintainer through [GitHub Issues](https://github.com/pamelah-233/ScieFig-Community/issues).
 
 [许可 / License](LICENSE) · [第三方声明 / Third-party notices](THIRD_PARTY_NOTICES.md)
+

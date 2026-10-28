@@ -1,6 +1,6 @@
 # macOS 1.2.2 安装 / Installation
 
-Mac 安装版不需要另装 Python、机器码或激活程序。当前 Mac 1.2.2 先供本地验收，确认后才公开下载。PKG 用于标准安装，DMG 用于替换已有安装；支持 Apple Silicon/macOS 14+。外接盘已有 ScieFig 时在原位置替换以避免重复图标。签名／系统安全提示及详细修复见 [macOS 说明](MACOS_1.2.2.md)。Mac 源码及 worker 构建均使用 Python 3.12。
+Mac 安装版不需要另装 Python、机器码或激活程序。[下载 macOS 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2)。PKG 用于标准安装，DMG 用于替换已有安装；支持 Apple Silicon/macOS 14+。外接盘已有 ScieFig 时在原位置替换以避免重复图标。签名／系统安全提示及详细修复见 [macOS 说明](MACOS_1.2.2.md)。Mac 源码及 worker 构建均使用 Python 3.12。
 
 # ScieFig community source: getting started
 
