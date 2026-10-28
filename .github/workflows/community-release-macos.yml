@@ -97,12 +97,15 @@ jobs:
                   print(name, metadata['device'], int(labels.max()))
           PY
       - name: Verify focused macOS workflows
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
           .venv/bin/python -m pip install pytest-timeout==2.4.0
-          .venv/bin/python -m pytest -x -vv --timeout=120 --timeout-method=thread -p no:cacheprovider tests/test_public_source.py tests/test_startup_splash.py tests/test_analysis_async.py tests/test_analysis_state_restore.py tests/test_measurement_history_panel.py tests/test_measurement_main_preview.py tests/test_module_defaults.py tests/test_model_device_feedback.py tests/test_model_device_selection.py tests/test_shared_cellpose_backend.py tests/test_composer_a_controls.py tests/test_ui_repairs_20260908.py tests/test_canvas_empty_copy.py tests/test_macos_port.py tests/test_macos_compact_toolbar.py tests/test_macos_workflow_tables.py tests/test_macos_style_workbench.py tests/test_measurement_provenance.py tests/test_rgb_import_composite.py
+          # Fresh Qt application state per file avoids cumulative stylesheet costs.
+          for test_file in tests/test_public_source.py tests/test_startup_splash.py tests/test_analysis_async.py tests/test_analysis_state_restore.py tests/test_measurement_history_panel.py tests/test_measurement_main_preview.py tests/test_module_defaults.py tests/test_model_device_feedback.py tests/test_model_device_selection.py tests/test_shared_cellpose_backend.py tests/test_composer_a_controls.py tests/test_ui_repairs_20260908.py tests/test_canvas_empty_copy.py tests/test_macos_port.py tests/test_macos_compact_toolbar.py tests/test_macos_workflow_tables.py tests/test_macos_style_workbench.py tests/test_measurement_provenance.py tests/test_rgb_import_composite.py; do
+            .venv/bin/python -m pytest -x -q --timeout=120 --timeout-method=thread -p no:cacheprovider "$test_file"
+          done
       - name: Build application
         run: |
           .venv/bin/python packaging/build_macos.py --worker-dir build/macos/worker/ScieFig_Cellpose --output "$RUNNER_TEMP/ScieFig-release.noindex"
