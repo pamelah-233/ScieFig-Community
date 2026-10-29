@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import tempfile
+import sys
 
 from PyQt6.QtCore import QObject, QEvent, QProcess, QSignalBlocker, QTimer
 from PyQt6.QtWidgets import QApplication
@@ -27,6 +28,7 @@ class ModelDeviceController(QObject):
         self._timeout.setSingleShot(True)
         self._timeout.timeout.connect(self._timed_out)
         combo.currentIndexChanged.connect(self._selected)
+        combo.activated.connect(lambda index: self._selected(index) if self.state == 'unavailable' else None)
         parent.installEventFilter(self)
         parent.destroyed.connect(self.shutdown)
         QApplication.instance().aboutToQuit.connect(self.shutdown)
@@ -40,6 +42,20 @@ class ModelDeviceController(QObject):
         return False
 
     def _selected(self, _index):
+        self._timer.stop()
+        self._stop_probe()
+        if self.combo.currentData() == 'cuda' and sys.platform == 'win32':
+            from core.image_analysis import model_runtime
+            if model_runtime.optional_gpu_required(cellpose_backend.worker_root()):
+                self.state = 'unchecked'
+                self.retranslate()
+                from ui.widgets.gpu_runtime_dialog import GpuRuntimeDialog
+                resources = (Path(getattr(sys, '_MEIPASS'))/'resources' if getattr(sys, 'frozen', False)
+                             else Path(__file__).resolve().parents[2]/'resources')
+                dialog = GpuRuntimeDialog(self.combo.window(), resources)
+                if not dialog.exec():
+                    with QSignalBlocker(self.combo):
+                        self.combo.setCurrentIndex(self.combo.findData('cpu'))
         cellpose_backend.set_cellpose_device_preference(self.combo.currentData())
         self.check_current_device()
 

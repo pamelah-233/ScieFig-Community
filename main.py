@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.platform_support import ScieFigApplication, configure_application, configure_window
 from core.constants import SOFTWARE_VERSION
 
-_frozen_windows_application = None
+_windows_application = None
 
 
 def load_qss(resources_dir: Path) -> str:
@@ -44,12 +44,12 @@ def resolve_resources_dir() -> Path:
 
 
 def main() -> int:
-    global _frozen_windows_application
+    global _windows_application
     app = ScieFigApplication(sys.argv)
-    if sys.platform == 'win32' and getattr(sys, 'frozen', False):
-        # Retain Qt until the process boundary: the frozen Windows Qt teardown
+    if sys.platform == 'win32' and isinstance(app, QApplication):
+        # Retain Qt until the process boundary: Windows Qt teardown
         # crashes after a successfully closed main window (0xC0000005).
-        _frozen_windows_application = app
+        _windows_application = app
     app.setOrganizationName("ScieFig")
     app.setApplicationName("ScieFig")
     app.setApplicationVersion(SOFTWARE_VERSION)
@@ -82,6 +82,8 @@ def main() -> int:
         app.project_window = window
         window.show()
         splash.finish()
+        from ui.widgets.project_welcome_dialog import schedule_project_welcome
+        schedule_project_welcome(window, resources_dir)
         if os.environ.get('SCIEFIG_RELEASE_SMOKE') == '1':
             from PyQt6.QtCore import QTimer
             def finish_release_smoke():
@@ -107,13 +109,13 @@ def main() -> int:
             if window is not None and not sip.isdeleted(window):
                 sip.delete(window)
             app.processEvents()
-            if _frozen_windows_application is None:
+            if _windows_application is None:
                 sip.delete(app)
 
 
 if __name__ == "__main__":
     exit_code = main()
-    if _frozen_windows_application is not None:
+    if _windows_application is not None:
         # main() has already completed window/worker cleanup and save prompts.
         # Avoid the failing native QApplication finalizer in the frozen build.
         for stream in (sys.stdout, sys.stderr):

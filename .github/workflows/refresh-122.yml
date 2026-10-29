@@ -1,0 +1,143 @@
+name: Refresh ScieFig 1.2.2 installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: refresh-sciefig-122
+  cancel-in-progress: false
+env:
+  RELEASE_TAG: community-v1.2.2
+  STAGING_TAG: build-refresh-v1.2.2
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      expected_refs: ${{ steps.refs.outputs.expected_refs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,subprocess
+          refs={}
+          for tag in ('community-v1.2.2','macos-v1.2.2'):
+              refs[tag]=json.loads(subprocess.check_output(['gh','api',f'repos/{os.environ["GITHUB_REPOSITORY"]}/git/ref/tags/{tag}']))['object']['sha']
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out: out.write('expected_refs='+json.dumps(refs)+'\n')
+          PY
+          git fetch --no-tags --depth=1 --filter=blob:none origin e974f0a3fc09f21f9175d6a4899c4366b25eaa43
+          test "$(git diff --name-only e974f0a3fc09f21f9175d6a4899c4366b25eaa43 HEAD)" = "$(printf '.github/workflows/refresh-122.yml\npackaging/publish_refreshed_122.py')"
+          python - <<'PY_REUSE'
+          import json,os,subprocess
+          def gh(*args): return json.loads(subprocess.check_output(['gh','api',*args]))
+          repo=os.environ['GITHUB_REPOSITORY']
+          jobs=gh(f'repos/{repo}/actions/runs/40896917955/jobs')['jobs']
+          assert any(j['name']=='macos' and j['conclusion']=='success' for j in jobs)
+          draft=next(r for r in gh(f'repos/{repo}/releases?per_page=100') if r['tag_name']==os.environ['STAGING_TAG'])
+          assert draft['draft'] and draft['target_commitish']=='e974f0a3fc09f21f9175d6a4899c4366b25eaa43'
+          gh('--method','PATCH',f'repos/{repo}/releases/{draft["id"]}','-f','target_commitish='+os.environ['GITHUB_SHA'])
+          PY_REUSE
+  windows:
+    needs: prepare
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: app-python
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-python@v5
+        id: cpu-python
+        with:
+          python-version: '3.12.10'
+      - name: Reuse published application and complete GPU environment
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($PSVersionTable.PSVersion -lt [version]'7.6.4') {
+            $runtimeRelease=gh api repos/PowerShell/PowerShell/releases/latest | ConvertFrom-Json
+            $runtimeAsset=$runtimeRelease.assets | Where-Object name -Like '*-win-x64.zip' | Select-Object -First 1
+            Invoke-WebRequest $runtimeAsset.browser_download_url -OutFile "$env:RUNNER_TEMP/pwsh.zip"
+            Expand-Archive "$env:RUNNER_TEMP/pwsh.zip" "$env:RUNNER_TEMP/pwsh"
+            "$env:RUNNER_TEMP/pwsh" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          }
+          New-Item -ItemType Directory -Force -Path build/refresh,artifacts/windows | Out-Null
+          gh release download $env:RELEASE_TAG --pattern ScieFig_1.2.2_Setup.exe --dir build/refresh
+          if ($LASTEXITCODE) { throw 'Installer download failed' }
+          $exe=Join-Path $PWD 'build/refresh/ScieFig_1.2.2_Setup.exe'
+          $target=Join-Path $PWD 'build/refresh/app'
+          $install=Start-Process -FilePath $exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$target") -WindowStyle Hidden -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw 'Installer extraction failed' }
+          Remove-Item -LiteralPath $exe
+          foreach ($name in @('unins000.exe','unins000.dat','unins000.msg')) { Remove-Item -LiteralPath (Join-Path $target $name) -ErrorAction SilentlyContinue }
+          $python314='${{ steps.app-python.outputs.python-path }}'
+          & $python314 -m pip install pyinstaller==6.22.3
+          & $python314 packaging/update_frozen_application.py "$target/ScieFig_R10.exe" --module ui.widgets.project_welcome_dialog --module core.image_analysis.cellpose_backend --module core.image_analysis.model_runtime --module ui.controllers.model_device_controller --module ui.widgets.gpu_runtime_dialog
+          if ($LASTEXITCODE) { throw 'Application refresh failed' }
+      - name: Build only CPU inference environment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & '${{ steps.cpu-python.outputs.python-path }}' -m venv .venv-cpu
+          .venv-cpu/Scripts/python.exe -m pip install --no-deps --index-url https://download.pytorch.org/whl/cpu torch==2.12.0+cpu
+          if ($LASTEXITCODE) { throw 'CPU-only Torch failed' }
+          Get-Content packaging/requirements-cellpose-cpu-windows.txt | Where-Object { $_ -notlike '--extra-index-url*' } | Set-Content build/refresh/cpu-requirements.txt
+          .venv-cpu/Scripts/python.exe -m pip install -r build/refresh/cpu-requirements.txt
+          if ($LASTEXITCODE) { throw 'CPU dependencies failed' }
+          & ./packaging/build_cellpose.ps1 -PythonPath "$PWD/.venv-cpu/Scripts/python.exe" -ModelPath "$PWD/build/refresh/app/cellpose/_internal/models/cyto3" -NucleiModelPath "$PWD/build/refresh/app/cellpose/_internal/models/nucleitorch_0" -RuntimeFlavor cpu -OutputDir "$PWD/build/refresh/cpu"
+      - name: Compile complete and CPU installers once
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $python314='${{ steps.app-python.outputs.python-path }}'
+          $app="$PWD/build/refresh/app"
+          $url="https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/ScieFig_GPU_cellpose3_torch212_win64_v1.zip"
+          $gpu=Start-Process -FilePath $python314 -ArgumentList @('packaging/package_gpu_runtime.py',"$app/cellpose",'artifacts/windows/ScieFig_GPU_cellpose3_torch212_win64_v1.zip','--url',$url) -WindowStyle Hidden -PassThru -RedirectStandardOutput build/refresh/gpu.log -RedirectStandardError build/refresh/gpu-error.log
+          & $python314 packaging/installer_files.py $app build/refresh/full.iss
+          $iscc='C:/Program Files (x86)/Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup --yes --no-progress }
+          & $iscc "/DDistDir=$app" "/DOutputDir=$PWD/artifacts/windows" "/DIconFile=$PWD/resources/icons/sciefig_app_icon.ico" "/DFilesList=$PWD/build/refresh/full.iss" packaging/ScieFig_R10.iss
+          if ($LASTEXITCODE) { throw 'Complete installer failed' }
+          $gpu.WaitForExit()
+          if ($gpu.ExitCode -ne 0) { Get-Content build/refresh/gpu-error.log; throw 'GPU archive failed' }
+          Copy-Item artifacts/windows/ScieFig_GPU_cellpose3_torch212_win64_v1.json build/refresh/app/_internal/resources/model_runtime.json -Force
+          & $python314 packaging/installer_files.py $app build/refresh/cpu.iss "$PWD/build/refresh/cpu"
+          if (Select-String -Path build/refresh/cpu.iss -Pattern 'torch_cuda\.dll|cublas.*\.dll') { throw 'GPU library in CPU installer' }
+          & $iscc /FScieFig_1.2.2_CPU_Setup "/DDistDir=$app" "/DOutputDir=$PWD/artifacts/windows" "/DIconFile=$PWD/resources/icons/sciefig_app_icon.ico" "/DFilesList=$PWD/build/refresh/cpu.iss" packaging/ScieFig_R10.iss
+          if ($LASTEXITCODE) { throw 'CPU installer failed' }
+          git archive --format=zip --output=artifacts/windows/ScieFig_1.2.2_Windows_source.zip HEAD
+          Copy-Item docs/DEPENDENCY_SOURCES.json artifacts/windows/DEPENDENCY_SOURCES.json
+          if (Get-ChildItem artifacts/windows -File | Where-Object Length -GE 2GB) { throw 'Release file exceeds limit' }
+      - name: Upload verified Windows packages to draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:STAGING_TAG artifacts/windows/* --clobber
+          if ($LASTEXITCODE) { throw 'Windows upload failed' }
+  macos:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reuse verified Mac DMG and PKG; refresh matching source only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p artifacts/macos
+          git archive --format=zip --output=artifacts/macos/ScieFig_1.2.2_macOS_source.zip HEAD
+          gh release upload "$STAGING_TAG" artifacts/macos/ScieFig_1.2.2_macOS_source.zip --clobber
+  publish:
+    needs: [prepare,windows,macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_REFS: ${{ needs.prepare.outputs.expected_refs }}
+        run: python packaging/publish_refreshed_122.py

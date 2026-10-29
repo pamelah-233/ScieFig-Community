@@ -13,11 +13,13 @@ def identical_bytes(first, second):
         return not b.read(1)
 
 
-def installer_entries(root):
+def installer_entries(root, runtime_override=None):
     root=Path(root).resolve()
     worker=root/'cellpose/_internal'
     lines=[]
     for file in sorted(path for path in root.rglob('*') if path.is_file()):
+        if runtime_override and file.is_relative_to(root/'cellpose'):
+            continue
         source=file
         twin=worker/'torch/lib'/file.name
         if file.parent==worker and file.suffix.lower()=='.dll' and identical_bytes(file,twin):
@@ -26,10 +28,16 @@ def installer_entries(root):
         relative_dir=str(file.parent.relative_to(root)).replace('/', '\\')
         destination='{app}'+('\\'+relative_dir if relative_dir!='.' else '')
         lines.append(f'Source: "{{#DistDir}}\\{relative_source}"; DestDir: "{destination}"; Flags: ignoreversion')
+    if runtime_override:
+        runtime=Path(runtime_override).resolve()
+        for file in sorted(path for path in runtime.rglob('*') if path.is_file()):
+            relative_dir=str(file.parent.relative_to(runtime)).replace('/', '\\')
+            destination='{app}\\cellpose'+('\\'+relative_dir if relative_dir!='.' else '')
+            lines.append(f'Source: "{file}"; DestDir: "{destination}"; Flags: ignoreversion')
     return lines
 
 
 if __name__=='__main__':
-    lines=installer_entries(sys.argv[1])
+    lines=installer_entries(sys.argv[1], sys.argv[3] if len(sys.argv)>3 else None)
     Path(sys.argv[2]).write_text('\n'.join(lines)+'\n',encoding='utf-8')
     print(f'Installer file entries: {len(lines)}; installed paths preserved.')

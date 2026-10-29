@@ -89,6 +89,7 @@ def test_startup_shows_feedback_before_window_and_cleans_up_on_failure(qt_applic
     monkeypatch.setattr(ui.main_window,'MainWindow',Window)
     monkeypatch.setattr(ui.widgets.startup_splash,'StartupSplash',Splash)
     monkeypatch.setattr('ui.controllers.project_open_controller.schedule_startup_project',lambda *a:events.append('project-routing'))
+    monkeypatch.setattr('ui.widgets.project_welcome_dialog.schedule_project_welcome',lambda *a:events.append('project-welcome'))
     monkeypatch.setattr(sys,'excepthook',sys.excepthook)
     if fail_window:
         with pytest.raises(RuntimeError,match='startup failure'):main.main()
@@ -97,4 +98,5 @@ def test_startup_shows_feedback_before_window_and_cleans_up_on_failure(qt_applic
     else:
         assert main.main()==0
         assert events.index('window-show')<events.index('finish')<events.index('project-routing')
+        assert events.index('finish')<events.index('project-welcome')<events.index('exec')
     assert events.index('splash-show')<events.index('stage-1')<events.index('stage-2')<events.index('window')

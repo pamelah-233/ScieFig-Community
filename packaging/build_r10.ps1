@@ -8,6 +8,8 @@ param(
 
     [string]$StyleRuntimeDir = '',
 
+    [string]$GpuRuntimeManifest = '',
+
     [switch]$SkipInstaller
 )
 
@@ -169,6 +171,14 @@ if (-not (Test-Path (Join-Path $distDir '_internal\resources\ScieFig_R10_Activat
 }
 if (-not (Test-Path (Join-Path $distDir '_internal\resources\icons\sciefig_app_icon.ico'))) {
     throw 'Bundled application icon was not copied into the frozen resources directory.'
+}
+
+if ($GpuRuntimeManifest) {
+    $descriptor = Get-Content -LiteralPath $GpuRuntimeManifest -Raw | ConvertFrom-Json
+    if ($descriptor.id -ne 'cellpose3-torch212-win64-v1' -or $descriptor.size -le 0 -or $descriptor.sha256 -notmatch '^[a-f0-9]{64}$' -or $descriptor.url -notlike 'https://*') {
+        throw 'Invalid optional GPU runtime descriptor.'
+    }
+    Copy-Item -LiteralPath $GpuRuntimeManifest -Destination (Join-Path $distDir '_internal\resources\model_runtime.json') -Force
 }
 if (-not (Test-Path (Join-Path $distDir '_internal\config\journal_presets.json'))) {
     throw 'Bundled journal preset config was not copied into the frozen config directory.'

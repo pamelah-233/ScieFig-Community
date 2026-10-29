@@ -48,7 +48,9 @@ def device_probe_command(folder, device):
     y, x = np.mgrid[:64, :64]
     image = (200*np.exp(-((x-32)**2+(y-32)**2)/64)).astype(np.float32)
     np.save(source, image, allow_pickle=False)
-    return (worker_command()+[str(source), str(target), '--device', device,
+    with cellpose_device_scope(device):
+        command = worker_command()
+    return (command+[str(source), str(target), '--device', device,
             '--model', 'cyto3', '--diameter', '16', '--min-size', '5'], target)
 
 
@@ -87,15 +89,23 @@ def unpack_instance_labels(payload, image_shape):
     return labels
 
 
-def worker_command(root=None):
+def worker_root(root=None):
     if root is None:
         if getattr(sys, 'frozen', False):
             root = (Path(sys.executable).parent.parent / 'Resources' if sys.platform == 'darwin'
                     else Path(sys.executable).parent)
         else:
             root = Path(__file__).resolve().parents[2] / 'dist'
-    name = 'ScieFig_Cellpose' if sys.platform == 'darwin' else 'ScieFig_Cellpose.exe'
-    executable = Path(root) / 'cellpose' / name
+    return Path(root)/'cellpose'
+
+
+def worker_command(root=None):
+    folder = worker_root(root)
+    if sys.platform == 'win32':
+        from .model_runtime import worker_executable
+        executable = worker_executable(folder, cellpose_device_preference())
+    else:
+        executable = folder/'ScieFig_Cellpose'
     if not executable.is_file():
         raise FileNotFoundError('Cellpose runtime is missing. Please reinstall the complete ScieFig installer.')
     return [str(executable)]
