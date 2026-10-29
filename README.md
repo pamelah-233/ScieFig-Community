@@ -5,6 +5,9 @@ Scientific data and image analysis, plotting and figure assembly.
 
 [下载 Windows 1.2.2 / Download Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) · [下载 macOS 1.2.2 / Download macOS 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) · [使用说明 / Getting started](docs/GETTING_STARTED.md)
 
+> **NVIDIA GPU**：基础包可另行安装 GPU 加速组件；完整离线安装包已经包含，无需重复安装。
+> The basic installer supports a separate NVIDIA GPU component. The full offline installer already includes it.
+
 ## qPCR
 
 Excel 一键导入，自动识别支持的仪器导出格式、样本、靶标和 Ct；选择内参和对照后计算并绘图。下图使用本机真实 Excel，展示导入记录和表达量，不进行显著性推断。<br>

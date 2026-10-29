@@ -1,9 +1,5 @@
-# ScieFig 1.2.2 社区版
+## GPU 组件拆分 / Optional GPU component
 
-ScieFig 帮助你完成 qPCR、Western Blot 和显微图像分析，并把图片和图表整理到同一张画布上。
+Windows 新增包含全部功能、模型和 CPU 环境的基础安装包。NVIDIA 显卡用户可另行下载 GPU 加速组件，也可直接选择包含 CPU 和 GPU 环境的完整离线安装包。
 
-这次发布保留荧光、IHC、明场、图片浏览、排版和 Style 工作流，以及现有的 Cellpose 模型和测量功能。Windows 安装版无需机器码激活。
-
-下载 Windows 安装程序后运行安装即可。源码和组件说明随本版本提供；模型的使用条件请参阅其中的说明。
-
-欢迎通过 GitHub Issues 反馈问题或联系作者讨论定制功能。作者希望软件主要用于非商业用途；这一倡议不限制许可证授予的权利。
+Windows now offers a basic installer with all features, models and the CPU runtime. NVIDIA GPU users can add the GPU acceleration component separately, or choose the complete offline installer with both CPU and GPU environments.

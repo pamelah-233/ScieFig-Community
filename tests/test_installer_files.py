@@ -29,3 +29,16 @@ def test_same_sized_different_files_are_not_merged(tmp_path):
     assert len(lines)==3
     assert any('Source: "{#DistDir}\\cellpose\\_internal\\c10.dll";' in line for line in lines)
     assert any('DestDir: "{app}";' in line for line in lines)
+
+
+def test_cpu_override_keeps_application_and_excludes_full_gpu_payload(tmp_path):
+    app=tmp_path/'app';cpu=tmp_path/'cpu'
+    (app/'cellpose').mkdir(parents=True);cpu.mkdir()
+    (app/'ScieFig_R10.exe').write_bytes(b'app')
+    (app/'cellpose/torch_cuda.dll').write_bytes(b'gpu')
+    (cpu/'ScieFig_Cellpose.exe').write_bytes(b'cpu')
+    (cpu/'runtime.json').write_text('cpu')
+    lines=entries_module().installer_entries(app,cpu)
+    assert len(lines)==3
+    assert not any('torch_cuda' in line for line in lines)
+    assert any('DestDir: "{app}\\cellpose"' in line and 'ScieFig_Cellpose.exe' in line for line in lines)

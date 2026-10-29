@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory=$true)][string]$PythonPath,
     [Parameter(Mandatory=$true)][string]$ModelPath,
-    [Parameter(Mandatory=$true)][string]$NucleiModelPath
+    [Parameter(Mandatory=$true)][string]$NucleiModelPath,
+    [ValidateSet('full','cpu')][string]$RuntimeFlavor = 'full',
+    [string]$OutputDir = ''
 )
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion -lt [version]'7.6.4') { throw 'PowerShell Core 7.6.4+ required' }
@@ -10,7 +12,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Unsupported Cellpose build interpreter' }
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $build = Join-Path $repo 'build\r10\cellpose'
 $dist = Join-Path $repo 'dist'
-$target = Join-Path $dist 'cellpose'
+$target = if ($OutputDir) { [IO.Path]::GetFullPath($OutputDir) } else { Join-Path $dist 'cellpose' }
+if ((Test-Path -LiteralPath $target) -and (Get-Item -LiteralPath $target).LinkType) { throw 'Refusing to overwrite a linked runtime directory. Use a separate OutputDir.' }
+if ((Test-Path -LiteralPath $target) -and (Get-ChildItem -LiteralPath $target -Force | Select-Object -First 1)) { throw 'Use an empty OutputDir to avoid mixing CPU and GPU runtime files.' }
+& $PythonPath -c "import torch; assert ('$RuntimeFlavor' != 'cpu' or torch.version.cuda is None), 'CPU builds require CPU-only PyTorch'"
+if ($LASTEXITCODE -ne 0) { throw 'Runtime flavor does not match the build environment' }
 $model = (Resolve-Path -LiteralPath $ModelPath).Path
 $nucleiModel = (Resolve-Path -LiteralPath $NucleiModelPath).Path
 $reviewedDapiModel = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot 'models\cyto3_dapi_reviewed_v1')).Path
@@ -22,6 +28,9 @@ New-Item -ItemType Directory -Force -Path $build,$dist | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Cellpose freeze failed' }
 New-Item -ItemType Directory -Force -Path $target | Out-Null
 Copy-Item -Path (Join-Path $build 'ScieFig_Cellpose\*') -Destination $target -Recurse -Force
+if ($RuntimeFlavor -eq 'cpu') {
+    '{"id":"cellpose3-torch212-win64-v1","device":"cpu"}' | Set-Content -LiteralPath (Join-Path $target 'runtime.json') -Encoding utf8NoBOM
+}
 & $PythonPath (Join-Path $PSScriptRoot 'collect_cellpose_licenses.py') (Join-Path $target 'THIRD_PARTY_LICENSES')
 if ($LASTEXITCODE -ne 0) { throw 'Cellpose license collection failed' }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'models\truefad_source_rdf.yaml'),(Join-Path $PSScriptRoot 'models\truefad_myotube.json') -Destination (Join-Path $target 'THIRD_PARTY_LICENSES')

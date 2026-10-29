@@ -20,6 +20,7 @@ NEW_FILES = ROOT_FILES | {
     "docs/OPEN_SOURCE_READINESS.md", "docs/MODEL_LICENSE_REVIEW.md",
     "docs/DEPENDENCY_SOURCES.json", "docs/COMMUNITY_RELEASE_NOTES.md",
     ".github/workflows/community-checks.yml", ".github/workflows/community-release-windows.yml",
+    ".github/workflows/refresh-122.yml",
 }
 MODEL_FILES = {
     "packaging/models/cyto3_dapi_reviewed_v1", "packaging/models/cyto3_he_fiber_boundary_v1",
@@ -41,7 +42,7 @@ def include_path(name: str, *, approved_weights: bool = False) -> bool:
         return name.endswith((".json", ".yaml")) or (approved_weights and name in MODEL_FILES)
     if name.startswith("scripts/analysis_experiments/"):
         return False
-    if name in {".github/workflows/community-checks.yml", ".github/workflows/community-release-windows.yml"}:
+    if name in {".github/workflows/community-checks.yml", ".github/workflows/community-release-windows.yml", ".github/workflows/refresh-122.yml"}:
         return True
     if name.startswith("packaging/release_notes"):
         return False
