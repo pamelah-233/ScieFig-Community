@@ -44,6 +44,14 @@ def prepare(root, target):
     source = source[:start]+'    def _set_language_button_state(self, language: str) -> None:\n        pass\n\n'+source[end:]
     path.write_text(source, encoding='utf-8')
 
+    path = target/'ui/controllers/workflow_presentation_controller.py'
+    source = path.read_text(encoding='utf-8-sig')
+    source = source.replace('        for button in (window.language_zh_button, window.language_en_button):\n'
+                            '            button.clicked.connect(self.schedule_sync)\n', '')
+    if 'language_zh_button' in source or 'language_en_button' in source:
+        raise ValueError('Language button references remain in the workflow controller')
+    path.write_text(source, encoding='utf-8')
+
     path = target/'ui/widgets/project_welcome_dialog.py'
     tree = ast.parse(path.read_text(encoding='utf-8-sig'))
     for node in tree.body:
