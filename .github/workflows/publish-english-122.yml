@@ -1,0 +1,35 @@
+name: Add English package to existing 1.2.2 release
+
+on:
+  push:
+    branches: [english-v1.2.2]
+    paths: ['.github/workflows/publish-english-122.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-english-122
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ScieFig-1.2.2-English-CPU
+          run-id: 41390481782
+          github-token: ${{ github.token }}
+          path: artifacts/english
+      - name: Add files and organize downloads while preserving asset IDs and counts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python packaging/publish_english_122.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-download-count-preservation
+          path: release-preservation.json
