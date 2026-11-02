@@ -1857,6 +1857,8 @@ class FluorescenceWorkspace(QWidget):
             self.channel_layout.addWidget(row)
             self._channel_widgets.append((visible, min_spin, max_spin, color_combo))
         self.channel_layout.addStretch(1)
+        from ui.widgets.workflow_forms import compact_sidebar_margins
+        compact_sidebar_margins(self.channel_controls, outer_margin=0)
         self.view_mode_combo.blockSignals(True)
         self.view_mode_combo.setCurrentIndex(self.view_mode_combo.findData(str(image.get("view_mode", "merge"))))
         self.view_mode_combo.blockSignals(False)

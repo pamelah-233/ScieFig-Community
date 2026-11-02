@@ -89,12 +89,14 @@ class WorkflowPresentationController(QObject):
         window.module_defaults = ModuleDefaultsController(window)
         from ui.controllers.measurement_history_controller import MeasurementHistoryController
         window.measurement_history = MeasurementHistoryController(window,self)
-        from ui.widgets.workflow_forms import readable_forms
+        from ui.widgets.workflow_forms import readable_forms, compact_sidebar_margins
         from ui.widgets.responsive_action_grid import adapt_action_rows
         for panel in self.panels.values():
             readable_forms(panel);adapt_action_rows(panel)
+            compact_sidebar_margins(panel.findChild(QScrollArea).widget())
         for panel in (window.image_browser_workspace.side_panel,window.composer_workspace.inspector_dialog):
             readable_forms(panel);adapt_action_rows(panel)
+            compact_sidebar_margins(panel)
         self.sync()
 
     def _install_studio_preview_controls(self):

@@ -7,7 +7,7 @@ from ui.widgets.current_page_stack import CurrentPageStackedWidget
 from ui.widgets.workflow_presentation import WorkflowDisclosure
 
 
-from ui.widgets.workflow_forms import readable_forms
+from ui.widgets.workflow_forms import readable_forms, compact_sidebar_margins
 
 
 class MeasurementWorkbenchController(QObject):
@@ -259,9 +259,11 @@ class MeasurementWorkbenchController(QObject):
         if step!=2 and self.image_group.parentWidget() is self.panel:
             self.panel.layout().removeWidget(self.image_group)
             layout,index=self._image_home;layout.insertWidget(max(0,index),self.image_group)
+            compact_sidebar_margins(self.image_group, outer_margin=0)
         elif step==2 and self.image_group.parentWidget() is not self.panel:
             self.image_group.parentWidget().layout().removeWidget(self.image_group)
             self.panel.layout().insertWidget(1,self.image_group)
+            compact_sidebar_margins(self.image_group)
         if self.module=='brightfield':
             if step!=2 and self.preview_row.parentWidget() is self.selector_wrap:
                 self.selector_wrap.layout().removeWidget(self.preview_row)
