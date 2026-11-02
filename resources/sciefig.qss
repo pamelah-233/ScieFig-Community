@@ -295,37 +295,37 @@ QDoubleSpinBox {
     padding: 4px 6px;
 }
 
-/* Explicit hit rectangles avoid Windows 11's narrow, horizontal native arrows. */
-QGroupBox#FluoroDisplayControls QSpinBox { padding-right: 32px; }
+/* Shared integer/decimal steppers, including dialogs and embedded workbenches. */
+QSpinBox, QDoubleSpinBox { padding-right: 32px; min-height: 24px; }
 QGroupBox#FluoroDisplayControls QCheckBox#FluoroDisplayBackground { min-height: 36px; }
-QGroupBox#FluoroDisplayControls QSpinBox::up-button {
+QSpinBox::up-button, QDoubleSpinBox::up-button {
     subcontrol-origin: border;
     subcontrol-position: top right;
     width: 28px;
-    height: 18px;
     background: #342d25;
     border-left: 1px solid #4a3f36;
     border-bottom: 1px solid #4a3f36;
     border-top-right-radius: 4px;
 }
-QGroupBox#FluoroDisplayControls QSpinBox::down-button {
+QSpinBox::down-button, QDoubleSpinBox::down-button {
     subcontrol-origin: border;
     subcontrol-position: bottom right;
     width: 28px;
-    height: 17px;
     background: #342d25;
     border-left: 1px solid #4a3f36;
     border-bottom-right-radius: 4px;
 }
-QGroupBox#FluoroDisplayControls QSpinBox::up-button:hover,
-QGroupBox#FluoroDisplayControls QSpinBox::down-button:hover { background: #514133; }
-QGroupBox#FluoroDisplayControls QSpinBox::up-button:pressed,
-QGroupBox#FluoroDisplayControls QSpinBox::down-button:pressed { background: #85553e; }
-QGroupBox#FluoroDisplayControls QSpinBox::up-arrow {
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background: #514133; }
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed { background: #85553e; }
+QSpinBox::up-button:disabled, QDoubleSpinBox::up-button:disabled,
+QSpinBox::down-button:disabled, QDoubleSpinBox::down-button:disabled { background: #2e2c2a; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
     image: url(sciefigSpin:spin-up.svg);
     width: 10px; height: 6px;
 }
-QGroupBox#FluoroDisplayControls QSpinBox::down-arrow {
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     image: url(sciefigSpin:spin-down.svg);
     width: 10px; height: 6px;
 }
@@ -625,6 +625,8 @@ QWidget#StyleLabWorkspace QDoubleSpinBox {
     min-height: 24px;
     padding: 3px 7px;
 }
+QWidget#StyleLabWorkspace QSpinBox,
+QWidget#StyleLabWorkspace QDoubleSpinBox { padding-right: 32px; }
 
 QWidget#StyleLabWorkspace QComboBox:disabled,
 QWidget#StyleLabWorkspace QLineEdit:disabled,

@@ -18,6 +18,8 @@ _windows_application = None
 
 
 def load_qss(resources_dir: Path) -> str:
+    from PyQt6.QtCore import QDir
+    QDir.setSearchPaths('sciefigSpin', [str(resources_dir / 'icons')])
     qss_path = resources_dir / "sciefig.qss"
     stylesheet = qss_path.read_text(encoding="utf-8")
     if sys.platform in {'darwin', 'win32'}:
