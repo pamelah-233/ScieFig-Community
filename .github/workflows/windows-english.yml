@@ -1,0 +1,106 @@
+name: Windows English basic installer
+
+on:
+  push:
+    branches: [english-v1.2.2]
+    paths:
+      - '.github/workflows/windows-english.yml'
+      - 'packaging/prepare_english.py'
+      - 'tests/test_english_package.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Prepare English-only source and tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install pyinstaller==6.22.3
+          if ($LASTEXITCODE) { throw 'PyInstaller installation failed' }
+          python -m unittest discover -s tests -p test_english_package.py
+          if ($LASTEXITCODE) { throw 'English package checks failed' }
+          python packaging/prepare_english.py build/english-source
+          if ($LASTEXITCODE) { throw 'English source preparation failed' }
+          if (!(Test-Path 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe')) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -notin 0,1641,3010) { throw 'Inno Setup installation failed' }
+          }
+      - name: Reuse published CPU runtime and existing GPU descriptor
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force build/english-download,artifacts/english | Out-Null
+          gh release download community-v1.2.2 --repo $env:GITHUB_REPOSITORY --pattern ScieFig_1.2.2_CPU_Setup.exe --dir build/english-download
+          if ($LASTEXITCODE) { throw 'CPU installer download failed' }
+          $installer=Join-Path $PWD 'build/english-download/ScieFig_1.2.2_CPU_Setup.exe'
+          $app=Join-Path $PWD 'build/english-app'
+          $p=Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$app") -WindowStyle Hidden -PassThru -Wait
+          if ($p.ExitCode) { throw 'CPU installer extraction failed' }
+          foreach ($name in @('unins000.exe','unins000.dat','unins000.msg')) {
+            $file=Join-Path $app $name
+            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }
+          }
+          $runtime=Get-Content "$app/cellpose/runtime.json" -Raw | ConvertFrom-Json
+          if ($runtime.device -ne 'cpu' -or $runtime.id -ne 'cellpose3-torch212-win64-v1') { throw 'Unexpected CPU runtime' }
+          if (Get-ChildItem "$app/cellpose" -Recurse -File -Filter torch_cuda.dll) { throw 'CUDA payload in CPU runtime' }
+          $release=gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/community-v1.2.2" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'Release metadata failed' }
+          $gpu=@($release.assets | Where-Object name -EQ 'ScieFig_GPU_cellpose3_torch212_win64_v1.zip')
+          if ($gpu.Count -ne 1 -or $gpu[0].digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'GPU descriptor unavailable' }
+          @{id=$runtime.id;url=$gpu[0].browser_download_url;size=$gpu[0].size;sha256=$gpu[0].digest.Substring(7)} | ConvertTo-Json | Set-Content "$app/_internal/resources/model_runtime.json" -Encoding utf8NoBOM
+          python packaging/update_frozen_application.py "$app/ScieFig_R10.exe" --root build/english-source --module core.utils.i18n --module ui.main_window --module ui.widgets.project_welcome_dialog --module core.image_analysis.cellpose_backend --module core.image_analysis.model_runtime --module ui.controllers.model_device_controller --module ui.widgets.gpu_runtime_dialog
+          if ($LASTEXITCODE) { throw 'English application update failed' }
+      - name: Verify actual English application startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:APPDATA=Join-Path $env:RUNNER_TEMP 'english-roaming'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP 'english-local'
+          $env:QT_QPA_PLATFORM='offscreen'
+          $env:SCIEFIG_RELEASE_SMOKE='1'
+          $env:SCIEFIG_RELEASE_SMOKE_MARKER=Join-Path $env:RUNNER_TEMP 'english-ok.txt'
+          $env:SCIEFIG_RELEASE_SMOKE_LOG=Join-Path $env:RUNNER_TEMP 'english-fault.txt'
+          New-Item -ItemType Directory -Force $env:APPDATA,$env:LOCALAPPDATA | Out-Null
+          $app=Join-Path $PWD 'build/english-app'
+          $p=Start-Process -FilePath "$app/ScieFig_R10.exe" -WorkingDirectory $app -WindowStyle Hidden -PassThru
+          if (!$p.WaitForExit(90000)) { Stop-Process -Id $p.Id; throw 'English startup timed out' }
+          if ($p.ExitCode -or !(Test-Path $env:SCIEFIG_RELEASE_SMOKE_MARKER)) {
+            Get-Content $env:SCIEFIG_RELEASE_SMOKE_LOG -ErrorAction SilentlyContinue
+            throw 'English application startup failed'
+          }
+      - name: Compile English basic installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $app=Join-Path $PWD 'build/english-app'
+          python packaging/installer_files.py $app build/english-files.iss
+          if ($LASTEXITCODE) { throw 'Installer manifest failed' }
+          $iss=Get-Content packaging/ScieFig_R10.iss -Raw
+          $iss=$iss.Replace('AppId={{0C73A76E-0E1D-49D2-A2D1-9809DE8926BE}','AppId={{3DD29264-84D7-4DFA-9413-0504AAEC2106}')
+          $iss=$iss.Replace('AppName=ScieFig','AppName=ScieFig English').Replace('DefaultDirName={autopf}\ScieFig','DefaultDirName={autopf}\ScieFig English').Replace('DefaultGroupName=ScieFig','DefaultGroupName=ScieFig English')
+          $iss=$iss.Replace('Name: "{autoprograms}\ScieFig"','Name: "{autoprograms}\ScieFig English"').Replace('Name: "{autodesktop}\ScieFig"','Name: "{autodesktop}\ScieFig English"')
+          $iss=$iss.Replace('ScieFig.Project','ScieFig.English.Project')
+          $iss=$iss.Replace('LicenseFile=..\LICENSE',"LicenseFile=$PWD\LICENSE")
+          $iss=$iss.Replace('[Tasks]',"[Languages]`nName: `"english`"; MessagesFile: `"compiler:Default.isl`"`n`n[Tasks]")
+          $iss | Set-Content build/english.iss -Encoding utf8NoBOM
+          & 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe' /FScieFig_1.2.2_English_CPU_Setup "/DDistDir=$app" "/DOutputDir=$PWD/artifacts/english" "/DIconFile=$PWD/resources/icons/sciefig_app_icon.ico" "/DFilesList=$PWD/build/english-files.iss" build/english.iss
+          if ($LASTEXITCODE) { throw 'English installer compilation failed' }
+          Copy-Item LICENSE,NOTICE,THIRD_PARTY_NOTICES.md build/english-source
+          Compress-Archive -Path build/english-source/* -DestinationPath artifacts/english/ScieFig_1.2.2_English_source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScieFig-1.2.2-English-CPU
+          path: artifacts/english/*
+          retention-days: 30
