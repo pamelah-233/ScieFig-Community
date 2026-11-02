@@ -60,7 +60,7 @@ jobs:
           $gpu=@($release.assets | Where-Object name -EQ 'ScieFig_GPU_cellpose3_torch212_win64_v1.zip')
           if ($gpu.Count -ne 1 -or $gpu[0].digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'GPU descriptor unavailable' }
           @{id=$runtime.id;url=$gpu[0].browser_download_url;size=$gpu[0].size;sha256=$gpu[0].digest.Substring(7)} | ConvertTo-Json | Set-Content "$app/_internal/resources/model_runtime.json" -Encoding utf8NoBOM
-          python packaging/update_frozen_application.py "$app/ScieFig_R10.exe" --root build/english-source --module core.utils.i18n --module ui.main_window --module ui.widgets.project_welcome_dialog --module core.image_analysis.cellpose_backend --module core.image_analysis.model_runtime --module ui.controllers.model_device_controller --module ui.widgets.gpu_runtime_dialog
+          python packaging/update_frozen_application.py "$app/ScieFig_R10.exe" --root build/english-source --module core.utils.i18n --module ui.main_window --module ui.controllers.workflow_presentation_controller --module ui.widgets.project_welcome_dialog --module core.image_analysis.cellpose_backend --module core.image_analysis.model_runtime --module ui.controllers.model_device_controller --module ui.widgets.gpu_runtime_dialog
           if ($LASTEXITCODE) { throw 'English application update failed' }
       - name: Verify actual English application startup
         shell: pwsh
@@ -75,7 +75,12 @@ jobs:
           New-Item -ItemType Directory -Force $env:APPDATA,$env:LOCALAPPDATA | Out-Null
           $app=Join-Path $PWD 'build/english-app'
           $p=Start-Process -FilePath "$app/ScieFig_R10.exe" -WorkingDirectory $app -WindowStyle Hidden -PassThru
-          if (!$p.WaitForExit(90000)) { Stop-Process -Id $p.Id; throw 'English startup timed out' }
+          if (!$p.WaitForExit(90000)) {
+            Stop-Process -Id $p.Id
+            Get-Content "$app/_internal/logs/sciefig_error.log" -ErrorAction SilentlyContinue
+            Get-Content $env:SCIEFIG_RELEASE_SMOKE_LOG -ErrorAction SilentlyContinue
+            throw 'English startup timed out'
+          }
           if ($p.ExitCode -or !(Test-Path $env:SCIEFIG_RELEASE_SMOKE_MARKER)) {
             Get-Content $env:SCIEFIG_RELEASE_SMOKE_LOG -ErrorAction SilentlyContinue
             throw 'English application startup failed'
