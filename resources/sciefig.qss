@@ -50,7 +50,6 @@ QWidget[workflowPlain="true"] {
     border: none;
 }
 QWidget[workflowWorkbench="true"] { background: #221e18; }
-QWidget[compactSidebar="true"] QGroupBox { padding-left: 0px; padding-right: 0px; }
 QFrame#V9RightWorkbenchGroup[workflowPlain="true"] {
     background: transparent;
     border: none;
