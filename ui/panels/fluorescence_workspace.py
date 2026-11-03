@@ -435,6 +435,9 @@ class FluorescenceWorkspace(QWidget):
         self.merge_selected_button.setEnabled(False)
         layout.addWidget(self.import_button)
         layout.addWidget(self.remove_button)
+        self.spatial_demo_button = QPushButton('多标记空间分析 Demo / Spatial demo')
+        self.spatial_demo_button.clicked.connect(self.open_spatial_demo)
+        layout.addWidget(self.spatial_demo_button)
         self.merge_image_list = QListWidget()
         self.merge_image_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.merge_image_list.itemSelectionChanged.connect(self._sync_merge_selected_button)
@@ -465,6 +468,14 @@ class FluorescenceWorkspace(QWidget):
         layout.addWidget(group)
         layout.addStretch(1)
         return page
+
+    def open_spatial_demo(self):
+        from ui.dialogs.spatial_demo import SpatialDemoDialog
+        if getattr(self, '_spatial_demo', None) is None:
+            self._spatial_demo = SpatialDemoDialog(self.window())
+        self._spatial_demo.show()
+        self._spatial_demo.raise_()
+        self._spatial_demo.activateWindow()
 
     def _build_channels_page(self) -> QWidget:
         page = QWidget()

@@ -116,6 +116,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if '--spatial-demo' in sys.argv:
+        from ui.dialogs.spatial_demo import run_demo
+        run_demo(load_qss(resolve_resources_dir()))
     exit_code = main()
     if _windows_application is not None:
         # main() has already completed window/worker cleanup and save prompts.
