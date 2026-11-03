@@ -132,6 +132,10 @@ $pyinstallerArgs = @(
     '--hidden-import'
     'tifffile'
     '--hidden-import'
+    'imagecodecs._imcd'
+    '--hidden-import'
+    'imagecodecs._shared_cython'
+    '--hidden-import'
     'matplotlib.backends.backend_svg'
     '--collect-all'
     'nd2'
@@ -155,6 +159,8 @@ $pyinstallerArgs = @(
     "${configDir};config"
     '--add-data'
     "${bundledPublicKeyPath};resources"
+    '--add-data'
+    "$(Join-Path $repoRoot 'LICENSES\imagecodecs-BSD-3-Clause.txt');THIRD_PARTY_LICENSES"
     $mainScript
 )
 

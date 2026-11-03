@@ -1,13 +1,30 @@
 {
-  "name": "Multi-marker nuclear segmentation reference",
+  "name": "Tissue multi-marker nuclear segmentation reference",
   "parameters": {
+    "method": "cellpose_nuclei",
+    "diameter_px": 25,
+    "min_area_px": 8,
+    "max_area_px": 5000,
+    "sensitivity": 1,
+    "cellpose_input": "raw"
+  },
+  "selection": "Selected on S-BIAD634 Ganglioneuroblastoma fields 0,1,6 from four model/diameter/normalization configurations and two area cutoffs; frozen before scoring fields 2,3,4,7,8,9,10. No weight training.",
+  "scope": "Development reference for DAPI-like tissue nuclei. Ten fields originate from one cryosection; field-held-out, not patient-held-out. Pretraining overlap unknown. Adapt diameter to acquisition scale; review crowded and weak nuclei. Marker measurements stay in raw units.",
+  "evaluation": {
+    "images": 7,
+    "instances": 1998,
+    "matching_iou": 0.5,
+    "previous_micro_f1": 0.813023701220972,
+    "selected_micro_f1": 0.8542372881355932,
+    "previous_macro_f1": 0.7513966105136048,
+    "selected_macro_f1": 0.8157254470790597
+  },
+  "previous_reference": {
     "method": "cellpose_cyto3",
     "diameter_px": 25,
     "min_area_px": 8,
     "max_area_px": 2000,
     "sensitivity": 1,
     "cellpose_input": "raw"
-  },
-  "selection": "Selected from four configurations on the first five official BBBC039 validation images. Frozen before the full official test split. No weight training.",
-  "scope": "Development reference, not tissue-specific accuracy validation. Adapt diameter to acquisition scale and review crowded nuclei. Marker quantification always uses raw signal."
+  }
 }

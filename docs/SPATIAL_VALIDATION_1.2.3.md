@@ -2,6 +2,36 @@
 
 日期：2026-11-03。本报告区分读取／运算正确性和生物学分割准确性。
 
+## 组织切片参数复测（最新，2026-11-03）
+
+新增 [S-BIAD634](https://www.ebi.ac.uk/biostudies/BioImages/studies/S-BIAD634) 的 Ganglioneuroblastoma 组织切片原图及专家逐核标签，研究来源为 [Kromp 等，Scientific Data 2020](https://doi.org/10.1038/s41597-020-00608-w)。[EBI 数据清单](https://uk1s3.embassy.ebi.ac.uk/bia-integrator-data/pages/S-BIAD634-ai.html)明确关联原图与 groundtruth TIFF，按发布标签 ID 评分，不使用 visualized PNG 或只标部分单核的 singlecell mask。
+
+十个视野的实际标签共 2771 个非零核实例。先固定开发视野 0、1、6；另外七个视野 2、3、4、7、8、9、10 只用于最终比较。它们来自同一组织切片，**不是跨患者划分**；预训练数据重叠未排查，因此只作开发比较。`plan.json` 在首轮评分前写入，候选配置固定后再评估预留视野。
+
+比较四种配置：cyto3／25 px／原始输入，cyto3／25 px／128 px 局部归一化，cyto3／40 px／128 px 局部归一化，nuclei／25 px／原始输入；分别比较最大核面积 2000 和 5000 px²，最小面积均为 8 px²。保持模型默认 1–99 百分位归一化、flow threshold=0.4、cellprob threshold=0、200 次迭代。使用现有 CPU 推理运行库，未训练或替换权重。
+
+开发视野平均 F1 最优为 **核专用 nuclei、直径 25 px、面积 8–5000 px²、原始输入**，开发集 macro F1=0.84995。固定该配置后，在七个预留视野的 1998 个标注核上比较：
+
+| 指标 | 之前的 cyto3 参考 | 本次组织参考 |
+|---|---:|---:|
+| TP / FP / FN | 1698 / 481 / 300 | 1764 / 368 / 234 |
+| 汇总实例 F1，IoU≥0.5 | 0.81302 | 0.85424 |
+| 逐图 F1 均值 | 0.75140 | 0.81573 |
+| 最差单图 F1 | 0.58824 | 0.73103 |
+| 逐图二值 Dice 均值 | 0.76935 | 0.81390 |
+
+补充诊断：每张评估图按标注核的平均原始强度取最低四分位，共 502 个弱核；在同一 IoU 判定下，匹配率从 423/502（84.26%）变为 445/502（88.65%）。按“至少覆盖两个真值核各 20%、各至少 20 像素”的固定诊断口径，疑似粘连预测从 104 降至 100；疑似过分割真值核从 11 降至 5。这些是诊断数量，不是经人工确认的错误分类。弱核和接触核仍需复核；一个预留视野 F1 略有下降，不应宣称所有图像均改善。
+
+原图宽高保持不变：1225×914、1360×1024 或 550×430。部分发布 TIFF 为三个完全相同的 uint8 灰度样本通道，逐像素确认相同后取其中一个做核检测；不把它们解释成三个独立染色 marker。所有强度测量仍使用原始数据。显示对比图可以调整显示对比度，不能据此改变定量输入。
+
+已将多标记入口的显式“核分割：加载参考参数”改为载入本次组织参考值；保留配置文件中的 `previous_reference`，不改已保存结果，不自动运行或覆盖当前分割。读取的是开发版 `_internal/resources/analysis_presets/dapi_multimarker_reference_v1_20261103.json`，已验证冻结程序中的真实控件得到 method=cellpose_nuclei、diameter=25、min=8、max=5000、input=raw。
+
+读取本批原图时发现本地冻结运行库只有 imagecodecs `_shared.pyd`，缺少实际 LZW 解码实现。补入与原 imagecodecs **2026.10.10 同版本**的 `_imcd.pyd` 和 `_shared_cython.pyd`，保留 BSD-3-Clause notice；开发版共享读取器已能读取该 LZW TIFF，输出原生 CYX、原始宽高且 downsample=1。用独立 Pillow 解码比较像素完全一致，并验证 uint16 LZW 无损编解码。`requirements.txt` 与 Windows 构建 hidden imports 同步补齐，避免重建时丢失组件；未修改独立安装版或 Cellpose 模型运行库。
+
+复查文件：`.local-runtime/spatial-validation/sources/tissue-annotated/manifest.json` 与 `dataset/` 保留原图、标签、源 URL；`results/tissue-tuning/` 包含计划、逐图模型输出、真实推理 metadata、开发／评估分数和汇总，以及 `weak-and-touching-diagnostics.json`、`development-field6-comparison.png`。可复运行 `packaging/validate_tissue_nuclei.py`，不会下载数据或训练权重。
+
+下文 BBBC039 成绩和 cyto3 参考参数属于前一轮培养细胞开发记录，保留以追踪变更；它们不与本次组织数据混合汇总。
+
 ## 后续接入与参数优化（同日追加）
 
 多标记分析已接入主程序“Fluoro／荧光 → Measure／测量 → Multi-marker / spatial／多标记 / 空间邻域”。原始 Demo 的固定阈值不再作为此正式测量任务的核分割依据；以下保留原 Demo 失败记录，便于复查。
