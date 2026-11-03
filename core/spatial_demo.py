@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import ndimage as ndi
+from scipy.spatial import cKDTree
 
 
 @dataclass
@@ -43,10 +44,16 @@ def synthetic_image(seed=23):
     return np.clip(image, 0, 65535).astype(np.uint16)
 
 
-def analyze(image, pixel_um=.5, nuclear_threshold=.16, expansion_um=3., thresholds=(.2, .2, .2), roi=(0, 0, 512, 512)):
+def analyze(image, pixel_um=.5, nuclear_threshold=.16, expansion_um=3., thresholds=(.2, .2, .2), roi=None):
     """Threshold nuclei; nearest-nucleus expansion without overlapping ownership."""
-    if image.shape != (4, 512, 512) or pixel_um <= 0 or expansion_um < 0:
+    if image.ndim != 3 or image.shape[0] != 4 or min(image.shape[1:]) < 1 or pixel_um <= 0 or expansion_um < 0:
         raise ValueError('Invalid demo image or scale')
+    height, width = image.shape[1:]
+    if roi is None:
+        roi = (0, 0, width, height)
+    x0, y0, x1, y1 = roi
+    if not (0 <= x0 < x1 <= width and 0 <= y0 < y1 <= height):
+        raise ValueError('ROI must be a nonempty rectangle inside the image')
     raw = image.astype(float)/65535
     binary = ndi.binary_fill_holes(raw[0] >= nuclear_threshold)
     labels, count = ndi.label(binary)
@@ -88,11 +95,14 @@ def spatial_metrics(result, source_code, target_code, radius_um=20., permutation
         return {'source_n': len(source), 'target_n': len(target), 'nearest': np.empty(0),
                 'neighbors': np.empty(0, dtype=int), 'source_ids': ids[source], 'p': None,
                 'null_mean': None, 'source_indices': np.flatnonzero(mask)[source]}
-    distances = np.linalg.norm(xy[:, None, :]-xy[None, :, :], axis=2)
-    np.fill_diagonal(distances, np.inf)
-    block = distances[np.ix_(source, target)]
-    nearest = block.min(axis=1)
-    neighbors = (block <= radius_um).sum(axis=1)
+    same_type = source_code == target_code
+    tree = cKDTree(xy[target])
+    # A full N×N distance array exhausts memory on dense, large tissue fields.
+    # For same-type queries the first point is self; the second is the nearest
+    # other cell (also correct when two distinct centroids coincide).
+    distances = tree.query(xy[source], k=2 if same_type else 1)[0]
+    nearest = distances[:, 1] if same_type else distances
+    neighbors = np.asarray(tree.query_ball_point(xy[source], radius_um, return_length=True))-int(same_type)
     finite = nearest[np.isfinite(nearest)]
     null_mean, p = None, None
     if len(finite) and permutations:
@@ -102,7 +112,8 @@ def spatial_metrics(result, source_code, target_code, radius_um=20., permutation
         for _ in range(permutations):
             shuffled = rng.permutation(codes)
             a, b = np.flatnonzero(shuffled == source_code), np.flatnonzero(shuffled == target_code)
-            values = distances[np.ix_(a, b)].min(axis=1)
+            distances = cKDTree(xy[b]).query(xy[a], k=2 if same_type else 1)[0]
+            values = distances[:, 1] if same_type else distances
             values = values[np.isfinite(values)]
             if len(values):
                 null.append(values.mean())

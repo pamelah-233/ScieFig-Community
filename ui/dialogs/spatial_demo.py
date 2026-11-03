@@ -32,7 +32,7 @@ class TissueView(QGraphicsView):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self.fit_image:
-            self.fitInView(QRectF(0, 0, 512, 512), Qt.AspectRatioMode.KeepAspectRatio)
+            self.fitInView(self.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def wheelEvent(self, event):
         factor = 1.18 if event.angleDelta().y() > 0 else 1/1.18
@@ -60,6 +60,10 @@ class SpatialDemoDialog(QDialog):
         self.resize(1380, 860)
         self.setMinimumSize(1060, 680)
         self.image = synthetic_image()
+        self.pixel_um = .5
+        self.unit = 'µm'
+        self.data_type = 'SYNTHETIC_DEMO'
+        self.source_label = '合成 4 通道图像'
         self.selected_id = None
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -69,7 +73,7 @@ class SpatialDemoDialog(QDialog):
         title = QLabel('多标记细胞表型  /  空间邻域')
         title.setStyleSheet('font-size:20px;font-weight:600;color:#ead8c4')
         outer.addWidget(title)
-        badge = QLabel('DEMO · 合成 4 通道图像 · 16-bit · 0.5 µm/px · 256 × 256 µm  |  不用于真实实验结论')
+        badge = self.badge = QLabel('DEMO · 合成 4 通道图像 · 16-bit · 0.5 µm/px · 256 × 256 µm  |  不用于真实实验结论')
         badge.setWordWrap(True)
         badge.setStyleSheet('color:#d6b188;padding:7px;background:#322a22;border-radius:4px')
         outer.addWidget(badge)
@@ -78,6 +82,9 @@ class SpatialDemoDialog(QDialog):
         controls = QWidget()
         column = QVBoxLayout(controls)
         column.setContentsMargins(4, 4, 10, 4)
+        load = QPushButton('载入 4 通道 TIFF（核通道在首位）')
+        load.clicked.connect(self.load_image)
+        column.addWidget(load)
         self._heading(column, '01  核分割与细胞区域')
         form = QFormLayout()
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
@@ -249,12 +256,59 @@ class SpatialDemoDialog(QDialog):
     def marker_names(self):
         return tuple(edit.text().strip() or f'Marker {i+1}' for i, edit in enumerate(self.names))
 
+    def load_image(self):
+        path, _ = QFileDialog.getOpenFileName(self, '载入 4 通道原始 TIFF', '', 'TIFF (*.tif *.tiff)')
+        if not path:
+            return
+        try:
+            from core.image_analysis.io_engine import read_microscopy_image
+            imported = read_microscopy_image(path)
+            image = imported.analysis_data
+            if image.ndim != 3 or image.shape[0] != 4 or image.dtype != np.uint16:
+                raise ValueError('此 Demo 需要 4 个独立 uint16 通道：首通道为细胞核，后 3 个为 marker。RGB 合成图不能替代原始通道。')
+            sx = imported.metadata.get('pixel_size_x_um') or imported.metadata.get('pixel_size_um')
+            sy = imported.metadata.get('pixel_size_y_um') or sx
+            scale = float(sx) if sx and sy and np.isclose(sx, sy) else None
+            self.set_image(image, pixel_um=scale, names=imported.channel_names[1:4],
+                           source_label=Path(path).name, data_type='RAW_TIFF_DEMO')
+        except Exception as exc:
+            QMessageBox.warning(self, '载入失败', str(exc))
+
+    def set_image(self, image, *, pixel_um=None, names=(), source_label='原始图像', data_type='RAW_TIFF_DEMO'):
+        """Keep the source dimensions; uncalibrated images report pixel units."""
+        if image.ndim != 3 or image.shape[0] != 4 or image.dtype != np.uint16:
+            raise ValueError('Expected four uint16 channels')
+        if pixel_um is not None and (not np.isfinite(pixel_um) or pixel_um <= 0):
+            raise ValueError('Invalid pixel scale')
+        self._timer.stop()
+        self.image = image
+        self.pixel_um = float(pixel_um) if pixel_um is not None else 1.
+        self.unit = 'µm' if pixel_um is not None else 'px'
+        self.data_type, self.source_label = data_type, source_label
+        self.selected_id = None
+        for i, edit in enumerate(self.names):
+            edit.setText(names[i] if i < len(names) else f'Marker {i+1}')
+        for spin in (self.expansion, self.radius):
+            spin.setSuffix(' '+self.unit)
+        self.cells_table.setHorizontalHeaderLabels(('ID', '表型', 'X '+self.unit, 'Y '+self.unit))
+        self.neighbors.setHorizontalHeaderLabels(('A 细胞', '最近 B / '+self.unit, '半径内 B 数'))
+        self.phenotypes.setHorizontalHeaderLabels(('表型', '数量', '比例', '个/mm²' if pixel_um else '个/10⁶ px²'))
+        h, w = image.shape[1:]
+        for index in (1, 2):
+            self.roi.model().item(index).setEnabled(w > 1)
+        calibration = f'{self.pixel_um:g} µm/px' if pixel_um else '未标定；距离以像素计'
+        self.badge.setText(f'DEMO · {source_label} · {w} × {h} px · 4 通道 · {calibration} | 阈值连通域演示，尚未验证生物学准确性')
+        self.roi.setCurrentIndex(0)
+        self.recalculate()
+        self.fit_view()
+
     def short_name(self, code):
         return ' '.join(name+'+' for i,name in enumerate(self.marker_names()) if code & (1 << i)) or '全部阴性'
 
     def recalculate(self):
-        roi = ((0, 0, 512, 512), (0, 0, 256, 512), (256, 0, 512, 512), (128, 128, 384, 384))[self.roi.currentIndex()]
-        self.result = analyze(self.image, nuclear_threshold=self.nuclear.value(), expansion_um=self.expansion.value(),
+        h, w = self.image.shape[1:]
+        roi = ((0, 0, w, h), (0, 0, max(1,w//2), h), (w//2, 0, w, h), (w//4, h//4, max(w//4+1,3*w//4), max(h//4+1,3*h//4)))[self.roi.currentIndex()]
+        self.result = analyze(self.image, pixel_um=self.pixel_um, nuclear_threshold=self.nuclear.value(), expansion_um=self.expansion.value(),
                               thresholds=[s.value() for s in self.thresholds], roi=roi)
         r = self.result
         names = self.marker_names()
@@ -269,7 +323,8 @@ class SpatialDemoDialog(QDialog):
         self.spatial = spatial_metrics(r, self.source.currentData(), self.target.currentData(), self.radius.value())
         count = Counter(r.phenotype[r.selected].tolist())
         total = int(r.selected.sum())
-        self.summary.setText(f'ROI 内 {total} 个细胞 / 全图 {len(r.ids)} 个\nROI 面积 {r.area_um2/1e6:.4f} mm²\n细胞密度 {total/(r.area_um2/1e6):,.0f} 个/mm²')
+        area_unit = 'mm²' if self.unit == 'µm' else '10⁶ px²'
+        self.summary.setText(f'ROI 内 {total} 个细胞 / 全图 {len(r.ids)} 个\nROI 面积 {r.area_um2/1e6:.4f} {area_unit}\n细胞密度 {total/(r.area_um2/1e6):,.0f} 个/{area_unit}')
         present = [code for code in range(8) if count[code]]
         self._fill(self.phenotypes, [(self.short_name(code), count[code], f'{count[code]/max(1,total):.1%}', f'{count[code]/(r.area_um2/1e6):,.0f}') for code in present])
         for row,code in enumerate(present):
@@ -281,13 +336,14 @@ class SpatialDemoDialog(QDialog):
         values = m['nearest'][np.isfinite(m['nearest'])]
         if len(values):
             p = '—' if m['p'] is None else f"{m['p']:.3f}"
-            baseline = '—' if m['null_mean'] is None else f"{m['null_mean']:.1f} µm"
-            self.metrics.setText(f"A → B  |  A={m['source_n']}，B={m['target_n']}\n最近邻均值 {values.mean():.1f} µm · 中位数 {np.median(values):.1f} µm\n{self.radius.value():g} µm 内有 B 邻居的 A：{np.mean(m['neighbors']>0):.1%}\n每个 A 的平均 B 邻居数：{m['neighbors'].mean():.2f}\n标签置换均值 {baseline} · 双侧 p={p}")
+            baseline = '—' if m['null_mean'] is None else f"{m['null_mean']:.1f} {self.unit}"
+            self.metrics.setText(f"A → B  |  A={m['source_n']}，B={m['target_n']}\n最近邻均值 {values.mean():.1f} {self.unit} · 中位数 {np.median(values):.1f} {self.unit}\n{self.radius.value():g} {self.unit} 内有 B 邻居的 A：{np.mean(m['neighbors']>0):.1%}\n每个 A 的平均 B 邻居数：{m['neighbors'].mean():.2f}\n标签置换均值 {baseline} · 双侧 p={p}")
         else:
             self.metrics.setText(f"A={m['source_n']}，B={m['target_n']}\n当前 ROI 中缺少可配对细胞，无法计算距离。")
         self.draw_histogram(values)
         if self.selected_id not in r.ids[r.selected]:
-            self.selected_id = int(m['source_ids'][0]) if len(m['source_ids']) else None
+            available = m['source_ids'] if len(m['source_ids']) else r.ids[r.selected]
+            self.selected_id = int(available[0]) if len(available) else None
         self.draw()
 
     def draw_histogram(self, values):
@@ -295,7 +351,7 @@ class SpatialDemoDialog(QDialog):
         pix.fill(QColor('#242423'))
         painter = QPainter(pix)
         painter.setPen(QColor('#d8d1c7'))
-        painter.drawText(10, 18, 'A → B  最近邻距离分布 / µm')
+        painter.drawText(10, 18, 'A → B  最近邻距离分布 / '+self.unit)
         if len(values):
             counts, edges = np.histogram(values, bins=10)
             for i, count in enumerate(counts):
@@ -308,7 +364,7 @@ class SpatialDemoDialog(QDialog):
 
     def fit_view(self):
         self.view.fit_image = True
-        self.view.fitInView(QRectF(0, 0, 512, 512), Qt.AspectRatioMode.KeepAspectRatio)
+        self.view.fitInView(self.view.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def select_cell(self, cell_id):
         if cell_id not in self.result.ids[self.result.selected]:
@@ -320,7 +376,8 @@ class SpatialDemoDialog(QDialog):
         if not hasattr(self, 'result'):
             return
         r = self.result
-        rgb = np.zeros((512, 512, 3), float)
+        h, w = self.image.shape[1:]
+        rgb = np.zeros((h, w, 3), float)
         colors = ((.25, .40, 1), (.15, 1, .35), (1, .15, .22), (1, .75, .12))
         for ch, enabled in enumerate((self.dapi.isChecked(), *(w.isChecked() for w in self.channels))):
             if enabled:
@@ -332,46 +389,48 @@ class SpatialDemoDialog(QDialog):
                 edge = (labels > 0) & (labels != ndi.minimum_filter(labels, size=3))
                 rgb[edge] = color
         pixels = np.ascontiguousarray(np.clip(rgb*320, 0, 255).astype(np.uint8))
-        image = QImage(pixels.data, 512, 512, pixels.strides[0], QImage.Format.Format_RGB888).copy()
+        image = QImage(pixels.data, w, h, pixels.strides[0], QImage.Format.Format_RGB888).copy()
         scene = self.view.scene()
         scene.clear()
         scene.addPixmap(QPixmap.fromImage(image))
-        scene.setSceneRect(0, 0, 512, 512)
+        scene.setSceneRect(0, 0, w, h)
         x0,y0,x1,y1 = r.roi
-        if r.roi != (0,0,512,512):
+        if r.roi != (0,0,w,h):
             shade = QBrush(QColor(0,0,0,155))
-            for rect in (QRectF(0,0,512,y0),QRectF(0,y1,512,512-y1),QRectF(0,y0,x0,y1-y0),QRectF(x1,y0,512-x1,y1-y0)):
+            for rect in (QRectF(0,0,w,y0),QRectF(0,y1,w,h-y1),QRectF(0,y0,x0,y1-y0),QRectF(x1,y0,w-x1,y1-y0)):
                 scene.addRect(rect, QPen(Qt.PenStyle.NoPen), shade)
             scene.addRect(QRectF(x0,y0,x1-x0,y1-y0), QPen(QColor('#f0dac0'),1.5,Qt.PenStyle.DashLine))
         if self.selected_id is not None:
             i = int(self.selected_id)-1
-            x,y = r.xy[i]/.5
-            radius = self.radius.value()/.5
+            x,y = r.xy[i]/self.pixel_um
+            radius = self.radius.value()/self.pixel_um
             circle = scene.addEllipse(x-radius,y-radius,2*radius,2*radius,QPen(QColor('#fff1b1'),1.5,Qt.PenStyle.DashLine),QBrush(QColor(255,225,130,18)))
             circle.setZValue(1)
             targets = np.flatnonzero(r.selected & (r.phenotype == self.target.currentData()) & (r.ids != self.selected_id))
             if len(targets):
                 nearest = targets[np.argmin(np.linalg.norm(r.xy[targets]-r.xy[i],axis=1))]
-                nx,ny = r.xy[nearest]/.5
+                nx,ny = r.xy[nearest]/self.pixel_um
                 scene.addLine(x,y,nx,ny,QPen(QColor('#fff1b1'),1.2,Qt.PenStyle.DotLine))
             expression = ' · '.join(f'{name} {value:.3f}' for name,value in zip(self.marker_names(),r.intensities[i]))
-            self.inspector.setText(f'细胞 #{self.selected_id} · {phenotype_name(r.phenotype[i],self.marker_names())}\n{expression}\n虚线圆：{self.radius.value():g} µm 邻域；点线：该细胞最近的 B。')
+            self.inspector.setText(f'细胞 #{self.selected_id} · {phenotype_name(r.phenotype[i],self.marker_names())}\n{expression}\n虚线圆：{self.radius.value():g} {self.unit} 邻域；点线：该细胞最近的 B。')
         else:
             self.inspector.setText('当前参数下没有可选细胞；降低 DAPI 阈值可恢复检测。')
         if self.overlay.currentIndex() != 1:
             for i in np.flatnonzero(r.selected):
-                x,y = r.xy[i]/.5
+                x,y = r.xy[i]/self.pixel_um
                 pen = QPen(QColor(COLORS[r.phenotype[i]]), 1.4)
                 item = scene.addEllipse(x-7,y-7,14,14,pen,QBrush(Qt.BrushStyle.NoBrush))
                 item.setData(0,int(r.ids[i]))
                 item.setZValue(3)
-        scene.addLine(385,485,485,485,QPen(QColor('white'),3))
-        text = scene.addText('50 µm')
+        length_px = min(100., w*.2)
+        margin = min(w,h)*.04
+        scene.addLine(w-margin-length_px,h-margin,w-margin,h-margin,QPen(QColor('white'),3))
+        text = scene.addText(f'{length_px*self.pixel_um:g} {self.unit}')
         text.setDefaultTextColor(QColor('white'))
-        text.setPos(405,461)
+        text.setPos(w-margin-length_px,h-margin-26)
 
     def export_csv(self):
-        path, _ = QFileDialog.getSaveFileName(self, '导出合成 Demo 数据', 'ScieFig_SYNTHETIC_cells.csv', 'CSV (*.csv)')
+        path, _ = QFileDialog.getSaveFileName(self, '导出 Demo 数据', 'ScieFig_DEMO_cells.csv', 'CSV (*.csv)')
         if not path:
             return
         r = self.result
@@ -381,10 +440,10 @@ class SpatialDemoDialog(QDialog):
             with Path(path).open('w',newline='',encoding='utf-8-sig') as stream:
                 writer = csv.writer(stream)
                 names = self.marker_names()
-                writer.writerow(['data_type','cell_id','roi','x_um','y_um','phenotype',*(n+'_mean_normalized' for n in names),'DAPI_threshold','expansion_um',*(n+'_threshold' for n in names),'neighbor_source','neighbor_target','radius_um','nearest_B_um','B_count_in_radius'])
+                writer.writerow(['data_type','cell_id','roi','x_'+('um' if self.unit == 'µm' else 'px'),'y_'+('um' if self.unit == 'µm' else 'px'),'phenotype',*(n+'_mean_normalized' for n in names),'DAPI_threshold','expansion_'+('um' if self.unit == 'µm' else 'px'),*(n+'_threshold' for n in names),'neighbor_source','neighbor_target','radius_'+('um' if self.unit == 'µm' else 'px'),'nearest_B_'+('um' if self.unit == 'µm' else 'px'),'B_count_in_radius'])
                 for i in np.flatnonzero(r.selected):
                     distance,count = spatial.get(int(r.ids[i]),(None,None))
-                    writer.writerow(['SYNTHETIC_DEMO',r.ids[i],self.roi.currentText(),*r.xy[i],phenotype_name(r.phenotype[i],names),*r.intensities[i],self.nuclear.value(),self.expansion.value(),*(s.value() for s in self.thresholds),self.source.currentText(),self.target.currentText(),self.radius.value(),distance if distance is not None and np.isfinite(distance) else '',count])
+                    writer.writerow([self.data_type,r.ids[i],self.roi.currentText(),*r.xy[i],phenotype_name(r.phenotype[i],names),*r.intensities[i],self.nuclear.value(),self.expansion.value(),*(s.value() for s in self.thresholds),self.source.currentText(),self.target.currentText(),self.radius.value(),distance if distance is not None and np.isfinite(distance) else '',count])
         except OSError as exc:
             QMessageBox.warning(self,'导出失败',str(exc))
 
