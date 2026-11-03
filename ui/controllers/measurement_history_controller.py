@@ -99,6 +99,7 @@ class MeasurementHistoryController(QObject):
 
     def rows(self,module,task):
         panel=self._panel(module)
+        if task=='spatial':return panel.analysis.get('multiplex_spatial_measurements',[])
         if task in ('dapi','he','central'):
             kind='muscle' if task=='central' else task
             return [r for r in panel.analysis.get('nuclei_measurements',[]) if r.get('task')==kind]

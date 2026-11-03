@@ -23,13 +23,15 @@ class MeasurementWorkbenchController(QObject):
         if module=='fluoro':
             from ui.controllers.measurement_relations_controller import MeasurementRelationsController
             self.controllers.update({task:MeasurementRelationsController(window,task) for task in ('phenotype','count_ratio','fusion')})
+            from ui.controllers.multiplex_spatial_controller import MultiplexSpatialController
+            self.controllers['spatial'] = MultiplexSpatialController(window)
         if module=='brightfield':self.controllers['central']=window.central_nuclei_controller
         # Reuse entry buttons as the actual task buttons. No duplicate hidden
         # selectors, checkable sections or alternate UI are kept alive.
         for task,controller in self.controllers.items():
             self.selector.addItem(tr('task_'+task),task,controller.controls.entry)
         if module=='fluoro':
-            self.selector.reorder(['roi_intensity','spot_count','dapi','myotube','ai_assisted','phenotype','count_ratio','fusion','line_profile','colocalization'])
+            self.selector.reorder(['roi_intensity','spot_count','dapi','myotube','ai_assisted','phenotype','spatial','count_ratio','fusion','line_profile','colocalization'])
             native=QWidget();native_layout=QVBoxLayout(native);native_layout.setContentsMargins(0,0,0,0);native_layout.setSpacing(8)
             layout=host.layout();dedicated=[c.controls for c in self.controllers.values()]
             while layout.count():
@@ -279,7 +281,7 @@ class MeasurementWorkbenchController(QObject):
 
     def retranslate(self):
         for key in self.selector.buttons:
-            label='task_'+key if key in ('cells','area','fiber','he','central','dapi','myotube','phenotype','count_ratio','fusion') else 'workflow_task_'+key
+            label='task_'+key if key in ('cells','area','fiber','he','central','dapi','myotube','phenotype','spatial','count_ratio','fusion') else 'workflow_task_'+key
             self.selector.setItemText(self.selector.findData(key),tr(label))
         for section in self.panel.findChildren(WorkflowDisclosure):section.retranslate()
         for controller in self.controllers.values():
