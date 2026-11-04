@@ -5,15 +5,26 @@ Scientific data and image analysis, plotting and figure assembly.
 
 ## 下载 / Download
 
-**[macOS 1.2.3 · DMG · Apple Silicon](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_macOS_arm64.dmg)** · [1.2.3 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.3) · [使用说明 / Getting started](docs/GETTING_STARTED.md)
+### Windows 1.2.3
 
-Windows 1.2.3 正在构建；目前可下载 [Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2)。[历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)。<br>
-Windows 1.2.3 is being built; [Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) remains available.
+| 安装包 / Installer | 下载 / Download |
+| --- | --- |
+| 完整离线包，包含 CPU / NVIDIA GPU 运行库 / Full offline package | [Windows 完整安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_Setup.exe) |
+| CPU 基础包 / CPU package | [Windows CPU 安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_CPU_Setup.exe) |
+| 纯英文 CPU 包 / English-only CPU package | [Windows English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_English_CPU_Setup.exe) |
+| NVIDIA GPU 补充包 / GPU component | [现有 GPU 补充包 / Existing GPU component](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_GPU_cellpose3_torch212_win64_v1.zip) |
 
-> **NVIDIA GPU**：Windows 基础包可另行安装 GPU 加速组件；完整离线安装包已经包含，无需重复安装。Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。
-> Windows basic installers support a separate NVIDIA GPU component; the complete installer already includes it. The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
+CPU 基础包和纯英文 CPU 包可加装上方 NVIDIA GPU 补充包。<br>
+The CPU and English CPU packages support the existing NVIDIA GPU component.
 
-[Windows NVIDIA GPU 补充包 / Windows NVIDIA GPU component](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_GPU_cellpose3_torch212_win64_v1.zip)
+### macOS 1.2.3
+
+**[macOS DMG · Apple Silicon](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_macOS_arm64.dmg)**
+
+Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。<br>
+The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
+
+[1.2.3 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.3) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
 
 ## 1.2.3 重要更新：多标记表型与细胞邻域
 ### New in 1.2.3: multi-marker phenotypes and cell neighborhoods
@@ -24,7 +35,7 @@ Review nuclear segmentation, classify marker combinations, and analyze cell neig
 - **多标记表型**：复用 DAPI 核分割，按原始 marker 信号和可调整阈值识别组合。
 - **最近邻距离**：选择来源表型 A 与目标表型 B，逐个计算 A 细胞到最近 B 细胞的核质心距离。
 - **邻域组成与结果联动**：统计指定半径内的细胞，点选查看位置、marker 均值和邻居，支持 CSV 导出。
-- **Mac 界面与性能**：修复分析完成时侧栏文字挤压；完整结果表按需加载，减少打开等待。
+- **界面与性能**：修复分析完成时侧栏文字挤压；完整结果表按需加载，减少打开等待。
 
 Reuse DAPI nuclei for marker combinations, calculate A→B nearest-neighbor distances, inspect radius-based neighborhoods, and export per-cell CSV results. Detailed result tables load on demand.
 
