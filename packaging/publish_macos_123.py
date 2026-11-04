@@ -94,7 +94,7 @@ Reuse DAPI nuclear segmentation to classify combinations of raw marker signals, 
 修复分析完成时侧栏文字挤压；完整结果表按需加载，减少打开等待。继承 1.2.3 的 WB 裁剪、条带测量与显示修复。<br>
 Fix sidebar text compression at analysis completion and load detailed result tables on demand. Includes the integrated 1.2.3 WB crop, strip measurement and display fixes.
 
-演示图片：Anna Pascual-Reguant，[MELC tonsil dataset](https://doi.org/10.5281/zenodo.3744152)，CC BY 4.0。选择同一视野的 DAPI、CD3、CD8、CD45 通道，截图中的伪彩和轮廓由 ScieFig 生成。标记阈值应结合实验对照校准，图示组合不等同于已验证的细胞类型。<br>
+演示图片：Anna Pascual-Reguant et al., *Multiplexed histology analyses for the phenotypic and spatial characterization of human innate lymphoid cells*, Nature Communications 12, 1737 (2021)。[原论文 / Paper](https://www.nature.com/articles/s41467-021-21994-8) · [MELC tonsil 原始数据 / Dataset](https://doi.org/10.5281/zenodo.3744152) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)。选择同一视野的 DAPI、CD3、CD8、CD45 通道，截图中的伪彩和轮廓由 ScieFig 生成。标记阈值应结合实验对照校准，图示组合不等同于已验证的细胞类型。<br>
 Demo data: the cited MELC tonsil dataset, CC BY 4.0. False colors and overlays were generated in ScieFig.
 
 """
