@@ -92,6 +92,9 @@ def main() -> int:
             schedule_project_welcome(window, resources_dir)
         if os.environ.get('SCIEFIG_RELEASE_SMOKE') == '1':
             from PyQt6.QtCore import QTimer
+            if '--wb-demo' in sys.argv:
+                # The synthetic project starts with deliberate edits.
+                window._capture_clean_project_baseline()
             def finish_release_smoke():
                 if window.is_project_dirty() or not window.close():
                     app.exit(2)

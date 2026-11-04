@@ -77,8 +77,11 @@ def verify_application(folder, flavor, cache, output):
         result = subprocess.run([str(exe), *arguments], cwd=folder, env=env, capture_output=True, text=True, timeout=120)
         (output / (name + '-stdout.txt')).write_text(result.stdout, encoding='utf-8')
         (output / (name + '-stderr.txt')).write_text(result.stderr, encoding='utf-8')
-        assert result.returncode == 0, result.stderr
-        assert marker.read_text() == 'main-window-closed'
+        fault = output / (name + '-fault.txt')
+        if result.returncode != 0 or not marker.is_file() or marker.read_text() != 'main-window-closed':
+            details = fault.read_text(encoding='utf-8', errors='replace') if fault.exists() else ''
+            raise RuntimeError(f'{flavor} {name} startup check failed (exit {result.returncode}):\n'
+                               f'{result.stderr}\n{details}')
         smoke.append(name)
 
     bundled = folder / 'cellpose'
