@@ -55,7 +55,7 @@ class MeasurementTaskSelector(QWidget):
 
     def _layout_buttons(self):
         from PyQt6.QtCore import QRect
-        width=self.contentsRect().width();columns=2 if width>=240 else 1
+        width=self.contentsRect().width();columns=2
         available=max(1,(width-6*(columns-1))//columns)
         height=max([34]+[button.fontMetrics().boundingRect(QRect(0,0,max(1,available-24),1000),
             Qt.TextFlag.TextWordWrap,button.text()).height()+16 for button in self.buttons.values()])
