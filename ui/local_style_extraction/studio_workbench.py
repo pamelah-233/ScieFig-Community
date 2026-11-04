@@ -281,12 +281,12 @@ class StudioStyleWorkbench(QObject):
             layout.addWidget(button, 1)
             page = QWidget()
             body = QVBoxLayout(page)
-            body.setContentsMargins(6, 0, 6, 0)
+            body.setContentsMargins(0, 0, 0, 0)
             body.setSpacing(2)
             for key in keys:
                 token = editor.rows[key]
                 token.setProperty('studioCompact', True)
-                token.layout().setContentsMargins(4, 6, 4, 6)
+                token.layout().setContentsMargins(0, 6, 0, 6)
                 token.layout().setSpacing(3)
                 token.reset_btn.setToolTip('还原「' + token.title.text() + '」的提取值')
                 set_studio_icon(token.reset_btn, 'reset', icon_only=True)

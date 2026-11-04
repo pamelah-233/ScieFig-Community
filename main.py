@@ -18,6 +18,8 @@ _windows_application = None
 
 
 def load_qss(resources_dir: Path) -> str:
+    from PyQt6.QtCore import QDir
+    QDir.setSearchPaths('sciefigSpin', [str(resources_dir / 'icons')])
     qss_path = resources_dir / "sciefig.qss"
     stylesheet = qss_path.read_text(encoding="utf-8")
     if sys.platform in {'darwin', 'win32'}:
@@ -82,10 +84,17 @@ def main() -> int:
         app.project_window = window
         window.show()
         splash.finish()
-        from ui.widgets.project_welcome_dialog import schedule_project_welcome
-        schedule_project_welcome(window, resources_dir)
+        if '--wb-demo' in sys.argv:
+            from ui.wb_demo import prepare_demo
+            prepare_demo(window)
+        else:
+            from ui.widgets.project_welcome_dialog import schedule_project_welcome
+            schedule_project_welcome(window, resources_dir)
         if os.environ.get('SCIEFIG_RELEASE_SMOKE') == '1':
             from PyQt6.QtCore import QTimer
+            if '--wb-demo' in sys.argv:
+                # The synthetic project starts with deliberate edits.
+                window._capture_clean_project_baseline()
             def finish_release_smoke():
                 if window.is_project_dirty() or not window.close():
                     app.exit(2)
@@ -94,7 +103,7 @@ def main() -> int:
             QTimer.singleShot(3000, finish_release_smoke)
         if app.pending_projects:
             app.open_pending_projects()
-        else:
+        elif '--wb-demo' not in sys.argv:
             schedule_startup_project(window, sys.argv[1:])
         return app.exec()
     finally:
@@ -114,6 +123,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if '--spatial-demo' in sys.argv:
+        from ui.dialogs.spatial_demo import run_demo
+        run_demo(load_qss(resolve_resources_dir()))
     exit_code = main()
     if _windows_application is not None:
         # main() has already completed window/worker cleanup and save prompts.

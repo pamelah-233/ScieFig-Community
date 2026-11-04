@@ -1,7 +1,7 @@
 """Application-wide constants for ScieFig."""
 
 SCHEMA_VERSION = "2.3.0"
-SOFTWARE_VERSION = "1.2.2"
+SOFTWARE_VERSION = "1.2.3"
 APP_NAME = "ScieFig"
 
 WB_STEP_IMPORT = 0

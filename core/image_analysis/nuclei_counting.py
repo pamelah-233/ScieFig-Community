@@ -118,7 +118,9 @@ def _he_watershed_labels(signal, diameter_px, min_area_px, sensitivity, settings
 
 def count_nuclei(image, *, stain, method='watershed', diameter_px=17., min_area_px=8,
                  max_area_px=2000, roi_mask=None, sensitivity=1., he_settings=None, local_he_settings=None,
-                 cellpose_input='raw', measurement_source=None, he_pale_settings=None):
+                 cellpose_input='raw', measurement_source=None, he_pale_settings=None, weak_recovery=False):
+    if weak_recovery and (stain != 'dapi' or method != 'cellpose_nuclei' or cellpose_input != 'raw'):
+        raise ValueError('Weak nuclear recovery requires the DAPI nuclei model with raw primary input.')
     if not np.isfinite([diameter_px, min_area_px, max_area_px, sensitivity]).all() or diameter_px < 2 or min_area_px < 1 or max_area_px < min_area_px or sensitivity <= 0:
         raise ValueError('Invalid nuclear diameter, area or sensitivity.')
     signal = nuclear_signal(image, stain)
@@ -186,10 +188,32 @@ def count_nuclei(image, *, stain, method='watershed', diameter_px=17., min_area_
             labels = watershed(-distance, markers, mask=foreground).astype(np.int32)
     else:
         raise ValueError('Unknown nuclear counting method.')
+    if weak_recovery and np.any(labels):
+        # Preserve primary contours. Contrast-enhanced candidates only supplement
+        # independent bodies, with an original-intensity gate to reject dim noise.
+        from .cellpose_backend import run_cellpose_labels, prepare_cellpose_channel
+        primary, _ = _filter_nuclear_objects(labels, measured_signal, None, None, min_area_px, max_area_px)
+        ids = np.unique(primary); ids = ids[ids > 0]
+        if len(ids):
+            enhanced, input_settings = prepare_cellpose_channel(signal, 'local_contrast')
+            candidates, extra_provenance = run_cellpose_labels(enhanced, model='nuclei', diameter=diameter_px, min_size=int(min_area_px))
+            if extra_provenance.get('device') != provenance.get('device'):
+                raise RuntimeError('Nuclear recovery passes used different computing devices.')
+            candidates, _ = _filter_nuclear_objects(candidates, measured_signal, None, None, min_area_px, max_area_px)
+            median = float(np.median(ndi.mean(measured_signal, primary, ids)))
+            values = np.unique(candidates); values = values[values > 0]
+            accepted = values[ndi.mean(measured_signal, candidates, values) >= .5*median]
+            lookup = np.zeros(int(candidates.max())+1, np.int32); lookup[accepted] = accepted
+            labels = merge_nuclear_candidates(primary, lookup[candidates])
+            provenance = {**provenance, 'weak_recovery': dict(version='raw_plus_contrast_v1',
+                minimum_original_mean_fraction=.5, primary_count=int(len(ids)),
+                added_count=int(len(np.unique(labels[labels > 0]))-len(ids)),
+                supplemental_inference=extra_provenance, input_preparation=input_settings)}
     kept, rows = _filter_nuclear_objects(labels, measured_signal, roi_mask, settings, min_area_px, max_area_px)
     parameters = dict(stain=stain, method=method, diameter_px=diameter_px,
                       min_area_px=min_area_px, max_area_px=max_area_px, sensitivity=sensitivity)
     if method in ('cellpose_nuclei','cellpose_cyto3','cellpose_cyto3_dapi_reviewed_v1'):parameters['cellpose_input']=cellpose_input
+    if weak_recovery: parameters['weak_recovery'] = True
     if settings is not None:
         parameters['he_settings'] = settings
     if local_settings is not None:
@@ -203,6 +227,8 @@ def _filter_nuclear_objects(labels, signal, roi_mask, settings, min_area_px, max
     # Select whole objects by centroid; flag truncation rather than counting clipped fragments.
     kept = np.zeros(labels.shape, np.int32)
     rows = object_rows(labels, signal)
+    regions = ndi.find_objects(labels)
+    accepted = []
     for row in rows:
         if not min_area_px <= row['area_px'] <= max_area_px:
             continue
@@ -214,10 +240,11 @@ def _filter_nuclear_objects(labels, signal, roi_mask, settings, min_area_px, max
         x, y = round(row['center_x_px']), round(row['center_y_px'])
         if roi_mask is not None and not roi_mask[y, x]:
             continue
-        kept[labels == row['object_id']] = row['object_id']
-        if roi_mask is not None and np.any((labels == row['object_id']) & ~roi_mask):
+        region = regions[row['object_id']-1]
+        mask = labels[region] == row['object_id']
+        kept[region][mask] = row['object_id']
+        if roi_mask is not None and np.any(mask & ~roi_mask[region]):
             row['border_truncated'] = True
             row['include_in_statistics'] = False
-    accepted = set(np.unique(kept)) - {0}
-    rows = [row for row in rows if row['object_id'] in accepted]
-    return kept, rows
+        accepted.append(row)
+    return kept, accepted

@@ -296,7 +296,7 @@ def _nd2_read_frame_axes(raw: np.ndarray, sizes: Mapping[str, Any]) -> str:
 
 def normalize_to_cyx(raw: np.ndarray, axes: str = "") -> np.ndarray:
     array = np.asarray(raw)
-    array = np.squeeze(array)
+    # Singleton X/Y dimensions are valid images, not disposable stack axes.
     if array.ndim == 2:
         array = array[np.newaxis, :, :]
     elif array.ndim == 3:
@@ -325,8 +325,8 @@ def _full_resolution_metadata(data: np.ndarray) -> dict[str, int]:
 
 def _normalize_3d(array: np.ndarray, axes: str = "") -> np.ndarray:
     axes = axes.upper()
-    if "C" in axes and len(axes) == 3:
-        channel_axis = axes.index("C")
+    if len(axes) == 3 and ("C" in axes or "S" in axes):
+        channel_axis = axes.index("C") if "C" in axes else axes.index("S")
     elif array.shape[0] <= 12:
         channel_axis = 0
     elif array.shape[-1] <= 12:
@@ -366,7 +366,7 @@ def _normalize_nd(array: np.ndarray, axes: str = "") -> np.ndarray:
     if axes and len(axes) == array.ndim and "Y" in axes and "X" in axes:
         y_axis = axes.index("Y")
         x_axis = axes.index("X")
-        c_axis = axes.index("C") if "C" in axes else None
+        c_axis = axes.index("C") if "C" in axes else axes.index("S") if "S" in axes else None
         keep_axes = {y_axis, x_axis}
         if c_axis is not None:
             keep_axes.add(c_axis)

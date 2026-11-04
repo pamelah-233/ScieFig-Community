@@ -656,7 +656,7 @@ class FluorescencePanel(BasePanel):
             rgb_interpretation_mode(image) in {RGB_COMPOSITE_MODE, FORCED_RGB_SPLIT_MODE}
             or self._image_record_is_rgb_sample_source(image)
         ):
-            visible_samples = np.asarray(data[:3])
+            visible_samples = self._rgb_planes_with_coverage(data)
             return np.max(visible_samples, axis=0).astype(data.dtype, copy=False), {
                 "source_channel_mode": "rgb_max_projection",
                 "source_channels": [0, 1, 2],
@@ -736,7 +736,8 @@ class FluorescencePanel(BasePanel):
         return [channel]
 
     def _rgb_component_channels(self, data: np.ndarray) -> list[dict[str, Any]]:
-        max_value = float(np.iinfo(data.dtype).max) if np.issubdtype(data.dtype, np.integer) else float(np.nanmax(data[:3]) or 1.0)
+        from core.plotting.fluoro_render import rgb_sample_maximum
+        max_value = rgb_sample_maximum(data)
         channels = []
         for index in range(3):
             channel = ChannelInfo(

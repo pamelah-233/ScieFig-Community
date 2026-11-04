@@ -19,7 +19,7 @@ def preview_objects(record, *, color=None):
     for row in rows:
         points = row.get('contour_points_px', row.get('contour_px', row.get('contour', [])))
         points = [p if isinstance(p, dict) else dict(x=p[0], y=p[1]) for p in points]
-        shade = color or ('#28FF50' if 'nuclei' in record else '#FFD13B')
+        shade = color or row.get('overlay_color') or ('#28FF50' if 'nuclei' in record else '#FFD13B')
         if not row.get('include_in_statistics', True) or row.get('classification') == 'excluded':
             shade = '#969696'
         elif not record.get('signal_classification', {}).get('stale'):
@@ -153,6 +153,13 @@ class MeasurementPreviewController(QObject):
                 return
             if controller is not None:
                 result = controller.current_result()
+                if getattr(controller, 'kind', None) == 'spatial':
+                    if result is None: workspace.canvas.clear_measurement_overlay()
+                    else: controller.draw_overlay(result)
+                    controller.sync_overview(True)
+                    has_overlay = bool(workspace.canvas._measurement_overlay_items)
+                    workspace._sync_ai_overlay_buttons(has_overlay=has_overlay, show_overlay=self._visible[module])
+                    return
                 records = self._controller_records(controller, result) if result is not None else []
                 if records:
                     workspace.canvas.show_ai_assisted_overlay(records)
@@ -208,7 +215,7 @@ class MeasurementPreviewController(QObject):
             return [dict(channel_index=source.get('channel_index', 0), object_table=preview_objects(source, color=color),
                          ai_measurement_uuid=result['measurement_uuid'])
                     for source, color in zip(result.get('source_snapshots', {}).values(), ('#22D7E6', '#FFBE14'))]
-        if getattr(controller, 'kind', None) == 'phenotype' and not controller.is_fresh(result):
+        if getattr(controller, 'kind', None) in {'phenotype','spatial'} and not controller.is_fresh(result):
             return []
         return [dict(channel_index=result.get('channel_index', result.get('signal_channel_index', 0)),
                      object_table=preview_objects(result), ai_measurement_uuid=result.get('measurement_uuid', ''))]

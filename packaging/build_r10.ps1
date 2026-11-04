@@ -64,8 +64,8 @@ Copy-Item $resolvedPublicKeyPath $bundledPublicKeyPath -Force
 @'
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 2, 2, 0),
-    prodvers=(1, 2, 2, 0),
+    filevers=(1, 2, 3, 0),
+    prodvers=(1, 2, 3, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -80,12 +80,12 @@ VSVersionInfo(
           '040904B0',
           [
             StringStruct('CompanyName', 'ScieFig'),
-            StringStruct('FileDescription', 'ScieFig 1.2.2'),
-            StringStruct('FileVersion', '1.2.2'),
+            StringStruct('FileDescription', 'ScieFig 1.2.3'),
+            StringStruct('FileVersion', '1.2.3'),
             StringStruct('InternalName', 'ScieFig_R10'),
             StringStruct('OriginalFilename', 'ScieFig_R10.exe'),
             StringStruct('ProductName', 'ScieFig'),
-            StringStruct('ProductVersion', '1.2.2')
+            StringStruct('ProductVersion', '1.2.3')
           ]
         )
       ]
@@ -132,6 +132,10 @@ $pyinstallerArgs = @(
     '--hidden-import'
     'tifffile'
     '--hidden-import'
+    'imagecodecs._imcd'
+    '--hidden-import'
+    'imagecodecs._shared_cython'
+    '--hidden-import'
     'matplotlib.backends.backend_svg'
     '--collect-all'
     'nd2'
@@ -155,6 +159,8 @@ $pyinstallerArgs = @(
     "${configDir};config"
     '--add-data'
     "${bundledPublicKeyPath};resources"
+    '--add-data'
+    "$(Join-Path $repoRoot 'LICENSES\imagecodecs-BSD-3-Clause.txt');THIRD_PARTY_LICENSES"
     $mainScript
 )
 

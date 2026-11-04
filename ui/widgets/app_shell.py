@@ -352,6 +352,8 @@ class V9AppShell(QWidget):
         self.stage_title_label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
         self.stagebar.layout().setStretch(1, 0)
         self.workflow_row=QWidget()
+        self.workflow_row.setMinimumWidth(0)
+        self.workflow_row.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred)
         self.workflow_row.setProperty('workflowPlain',True)
         self.workflow_row_layout=QBoxLayout(QBoxLayout.Direction.LeftToRight,self.workflow_row)
         self.workflow_row_layout.setContentsMargins(0,0,0,0)

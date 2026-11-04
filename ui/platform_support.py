@@ -70,6 +70,14 @@ class _MacScrollPresentation(QObject):
 
 
 def configure_application(app):
+    # Scientific images may exceed Qt/Pillow's general-purpose pixel budgets.
+    # Reading keeps native dimensions; individual views may create previews.
+    import os
+    from PIL import Image
+    from PyQt6.QtGui import QImageReader
+    os.environ['QT_IMAGEIO_MAXALLOC'] = '0'
+    QImageReader.setAllocationLimit(0)
+    Image.MAX_IMAGE_PIXELS = None
     if sys.platform not in {'darwin', 'win32'}:
         return
     if not hasattr(app, '_mac_scroll_presentation'):

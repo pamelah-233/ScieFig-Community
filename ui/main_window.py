@@ -35,7 +35,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.constants import WB_STEP_CROP, WB_STEP_DENSITY, WB_STEP_EXPORT, WB_STEP_IMPORT, WB_STEP_LABELS, WB_STEP_LAYOUT, WB_STEP_STATS
-from core.densitometry import measure_densitometry
+from core.densitometry import measure_densitometry, wb_measurement_strips, wb_measurement_inputs
 from core.brightfield_statistics import (
     BRIGHTFIELD_AI_OBJECT_COUNT_LABEL,
     BRIGHTFIELD_SEGMENTED_REGION_COUNT_LABEL,
@@ -687,6 +687,7 @@ class MainWindow(QMainWindow):
         self.data_panel.wb_preview_layout_button.clicked.connect(lambda: self.apply_wb_nature_layout(preview=True))
         self.data_panel.wb_apply_layout_button.clicked.connect(self.apply_wb_layout_selection)
         self.data_panel.wb_density_measure_button.clicked.connect(self.run_wb_densitometry)
+        self.data_panel.wb_density_value_toggle.toggled.connect(self.refresh_wb_density_values)
         self.data_panel.wb_density_copy_button.clicked.connect(self.copy_wb_densitometry_table)
         self.data_panel.wb_stats_run_button.clicked.connect(self.run_wb_statistics)
         self.data_panel.wb_stats_add_to_layout_button.clicked.connect(self.add_wb_statistics_plot_to_layout)
@@ -2384,6 +2385,8 @@ class MainWindow(QMainWindow):
         panel = self._active_wb_panel()
         if int(panel.data.get("wb_active_step", WB_STEP_IMPORT)) != int(step_index):
             panel.data["wb_active_step"] = int(step_index)
+        if step_index == WB_STEP_IMPORT: panel.data['wb_crop_preview'] = False
+        elif step_index >= WB_STEP_LABELS: panel.data['wb_crop_preview'] = True
         if step_index == WB_STEP_DENSITY:
             self._sync_wb_labels_for_density(panel)
         self.wb_canvas.set_mode(mode_by_step.get(step_index, "move"))
@@ -2395,11 +2398,10 @@ class MainWindow(QMainWindow):
         self.status_label.setText(self.data_panel.wb_step_hint.text())
         if step_index == WB_STEP_DENSITY:
             self._populate_wb_density_controls(panel)
-            existing = panel.data.get("densitometry")
-            if existing:
-                self.data_panel.populate_wb_density_results(existing)
-                self._refresh_wb_density_chart(existing)
-                self.wb_canvas.set_density_overlay(existing)
+            existing = self._current_wb_density(panel)
+            self.data_panel.populate_wb_density_results(existing or {})
+            self._refresh_wb_density_chart(existing or {})
+            self.wb_canvas.set_density_overlay(existing)
         elif step_index == WB_STEP_STATS:
             self.data_panel.populate_wb_stats_controls(list(panel.data.get("densitometry_runs", [])) or ([panel.data["densitometry"]] if panel.data.get("densitometry") else []))
             if panel.data.get("wb_statistics"):
@@ -2549,11 +2551,7 @@ class MainWindow(QMainWindow):
         ]
 
     def _populate_wb_density_controls(self, panel: WesternBlotPanel) -> None:
-        strips = list(panel.data.get("band_strips", []))
-        placed_ids = list(panel.data.get("placed_strip_ids", []))
-        if placed_ids:
-            by_id = {str(strip.get("strip_id")): strip for strip in strips}
-            strips = [by_id[strip_id] for strip_id in placed_ids if strip_id in by_id]
+        strips = wb_measurement_strips(panel.data)
         strip_info = [
             {
                 "strip_id": str(strip.get("strip_id", f"strip_{index + 1}")),
@@ -2570,6 +2568,10 @@ class MainWindow(QMainWindow):
                 lane_count = self.data_panel.wb_lane_count_spin.value()
             lane_labels = [f"Lane {index + 1}" for index in range(lane_count)]
         self.data_panel.populate_wb_density_controls(strip_info, lane_labels)
+        configured = panel.data.get('wb_layout', {}).get('loading_control_index')
+        if configured is not None and 0 <= int(configured) < len(strips):
+            combo = self.data_panel.wb_density_loading_ctrl_combo
+            combo.setCurrentIndex(combo.findData(strips[int(configured)]['strip_id']))
 
     def _sync_wb_labels_for_density(self, panel: WesternBlotPanel) -> None:
         entered_lane_labels = self.data_panel.wb_lane_labels()
@@ -2616,6 +2618,14 @@ class MainWindow(QMainWindow):
             for index, strip_index in enumerate(ordered_indices[: len(bands)])
         ]
         panel.data["wb_layout"] = layout
+        if panel.data.get('crops'):
+            for crop, band in zip(panel.data['crops'], bands):
+                crop['protein'] = str(band.get('protein', '')).strip()
+            layout['bands'] = [dict(crop_id=crop['crop_id'], protein=crop.get('protein', ''),
+                mw_kda=str(band.get('mw_kda', '')), is_loading_ctrl=bool(band.get('is_loading_ctrl', False)))
+                for crop, band in zip(panel.data['crops'], bands)]
+        loading_index = next((i for i,band in enumerate(bands) if band.get('is_loading_ctrl')), self.data_panel.wb_loading_control_combo.currentData())
+        if loading_index is not None: layout['loading_control_index'] = int(loading_index)
 
     def _editing_band_strips(self, panel: WesternBlotPanel) -> bool:
         return len(panel.data.get("band_strips", [])) > 1 and not panel.data.get("crops")
@@ -5651,7 +5661,8 @@ class MainWindow(QMainWindow):
                     self.data_panel.wb_contrast_spin.value(),
                     self.data_panel.wb_rotation_spin.value() + self.data_panel.wb_fine_rotation_slider.value() / 10.0,
                 )
-                self.wb_canvas.set_mode("roi")
+                panel.data['wb_crop_preview'] = True
+                self.wb_canvas.set_mode("move")
                 self._refresh_wb_ui(panel)
                 self._record_wb_change("Crop WB band strip", before)
                 self.statusBar().showMessage(tr("wb_strip_crop_recorded_status"), 3000)
@@ -5669,7 +5680,8 @@ class MainWindow(QMainWindow):
                 self.data_panel.wb_h_spin.value(),
                 protein=self.data_panel.wb_protein_edit.text().strip(),
             )
-            self.wb_canvas.set_mode("roi")
+            panel.data['wb_crop_preview'] = True
+            self.wb_canvas.set_mode("move")
             self._refresh_wb_ui(panel)
             self._record_wb_change("Crop WB band", before)
             self.statusBar().showMessage(tr("wb_crop_recorded_status"), 3000)
@@ -5692,7 +5704,8 @@ class MainWindow(QMainWindow):
         self._refresh_wb_ui(panel, show_full=True)
 
     def _refresh_wb_ui(self, panel: WesternBlotPanel, show_full: bool = False) -> None:
-        del show_full
+        if show_full: panel.data['wb_crop_preview'] = False
+        self._current_wb_density(panel)
         selected_index = self._selected_wb_strip_index(panel)
         if selected_index is not None:
             panel.data["selected_strip_index"] = selected_index
@@ -5944,6 +5957,9 @@ class MainWindow(QMainWindow):
         lane_labels = self.data_panel.wb_lane_labels_for_count()
         panel.set_annotations(lane_labels, [self.data_panel.wb_protein_edit.text().strip()] if self.data_panel.wb_protein_edit.text().strip() else [], self.data_panel.wb_marker_labels())
         panel.set_lane_calibration(first_x, last_x, self.data_panel.wb_lane_count_spin.value())
+        if panel.data.get('wb_crop_preview') and self.wb_canvas._strip_display_rects:
+            panel.data['annotations']['lane_anchor_width'] = max(r['display_rect'].width() for r in self.wb_canvas._strip_display_rects)
+        else: panel.data['annotations'].pop('lane_anchor_width', None)
         self._pending_lane_edge_x = None
         self.wb_canvas.set_mode("roi")
         self._refresh_wb_ui(panel)
@@ -6050,7 +6066,7 @@ class MainWindow(QMainWindow):
             return
         panel = self._active_wb_panel()
         self._sync_wb_labels_for_density(panel)
-        if not panel.data.get("band_strips"):
+        if not wb_measurement_strips(panel.data):
             QMessageBox.information(
                 self,
                 tr("densitometry_title"),
@@ -6118,7 +6134,7 @@ class MainWindow(QMainWindow):
 
     def copy_wb_densitometry_table(self) -> None:
         panel = self._active_wb_panel()
-        result = panel.data.get("densitometry", {})
+        result = self._current_wb_density(panel) or {}
         measurements = list(result.get("measurements", []))
         if not measurements:
             return
@@ -6263,6 +6279,7 @@ class MainWindow(QMainWindow):
             figure = build_densitometry_figure(
                 result,
                 preset_name=str(self._active_wb_panel().style.get("preset", "Nature")),
+                value_key='fold' if self.data_panel.wb_density_value_toggle.isChecked() else 'bg_subtracted',
             )
             chart = FigureCanvasQTAgg(figure)
             chart.setFixedHeight(200)
@@ -6271,6 +6288,24 @@ class MainWindow(QMainWindow):
             chart.draw()
         except Exception:
             return
+
+    def refresh_wb_density_values(self, *_args) -> None:
+        from core.utils.i18n import bind_i18n
+        normalized = self.data_panel.wb_density_value_toggle.isChecked()
+        bind_i18n(self.data_panel.wb_density_value_toggle, 'wb_density_normalized' if normalized else 'wb_density_absolute')
+        result = self._current_wb_density(self._active_wb_panel()) or {}
+        self.data_panel.populate_wb_density_results(result)
+        self._refresh_wb_density_chart(result)
+        self.wb_canvas.set_density_overlay(result, value_key='fold' if normalized else 'bg_subtracted')
+
+    def _current_wb_density(self, panel):
+        result = panel.data.get('densitometry')
+        if result and result.get('source_snapshot') != wb_measurement_inputs(panel.data):
+            panel.data.pop('densitometry', None); panel.data.pop('wb_statistics', None)
+            self.data_panel.populate_wb_density_results({}); self._refresh_wb_density_chart({})
+            self.wb_canvas.set_density_overlay(None)
+            return None
+        return result
 
     def _refresh_wb_stats_chart(self, result: dict) -> None:
         layout = self.data_panel.wb_stats_chart_layout
@@ -7022,6 +7057,9 @@ class MainWindow(QMainWindow):
 
     def enable_wb_roi_mode(self) -> None:
         self._pending_lane_edge_x = None
+        panel = self._active_wb_panel(); panel.data['wb_crop_preview'] = False
+        panel.data.setdefault('wb_layout', {})['enabled'] = False
+        self.wb_canvas.set_panel(panel)
         self.wb_canvas.set_mode("roi")
         self.statusBar().showMessage(tr("roi_selection_mode_status"), 5000)
 
@@ -7068,6 +7106,9 @@ class MainWindow(QMainWindow):
             self.data_panel.wb_marker_labels(),
         )
         panel.set_detected_lane_anchors(anchors)
+        if panel.data.get('wb_crop_preview') and self.wb_canvas._strip_display_rects:
+            panel.data['annotations']['lane_anchor_width'] = max(r['display_rect'].width() for r in self.wb_canvas._strip_display_rects)
+        else: panel.data['annotations'].pop('lane_anchor_width', None)
         self._refresh_wb_ui(panel)
         self._record_wb_change("Auto detect WB lanes", before)
         self.statusBar().showMessage(
