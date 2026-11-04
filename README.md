@@ -24,6 +24,8 @@ The CPU and English CPU packages support the existing NVIDIA GPU component.
 Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。<br>
 The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
 
+1.2.3 打包源码 / Build source: [Windows](https://github.com/pamelah-233/ScieFig-Community/tree/windows-v1.2.3) · [macOS](https://github.com/pamelah-233/ScieFig-Community/tree/macos-v1.2.3)。源码快照中的旧下载链接仅作历史记录，请使用上方安装包链接。 / Use the installer links above; source snapshots can contain historical download links.
+
 [1.2.3 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.3) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
 
 ## 1.2.3 重要更新：多标记表型与细胞邻域
