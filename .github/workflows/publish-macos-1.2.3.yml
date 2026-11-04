@@ -1,0 +1,26 @@
+name: Publish approved macOS 1.2.3
+on:
+  push:
+    branches: [publish-macos-1.2.3]
+    paths:
+      - .github/workflows/publish-macos-1.2.3.yml
+      - packaging/publish_macos_123.py
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-approved-macos-1.2.3
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Publish the approved DMG and preserve Windows and 1.2.2 assets
+        run: python packaging/publish_macos_123.py
