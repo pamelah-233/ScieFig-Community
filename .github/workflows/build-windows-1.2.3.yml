@@ -1,0 +1,191 @@
+name: Build and stage Windows 1.2.3 installers
+
+on:
+  push:
+    branches: [windows-1.2.3]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-candidate-1.2.3
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 180
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Prepare build tools
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($PSVersionTable.PSVersion -lt [version]'7.6.4') {
+            $release=gh api repos/PowerShell/PowerShell/releases/latest | ConvertFrom-Json
+            if ([version]$release.tag_name.TrimStart('v') -lt [version]'7.6.4') { throw 'PowerShell Core 7.6.4+ required' }
+            $asset=$release.assets | Where-Object name -Like '*-win-x64.zip' | Select-Object -First 1
+            Invoke-WebRequest $asset.browser_download_url -OutFile "$env:RUNNER_TEMP/pwsh.zip"
+            Expand-Archive "$env:RUNNER_TEMP/pwsh.zip" "$env:RUNNER_TEMP/pwsh"
+            "$env:RUNNER_TEMP/pwsh" | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          }
+          python -m venv .venv
+          .venv/Scripts/python.exe -m pip install -r requirements.txt pyinstaller==6.22.3
+          if ($LASTEXITCODE) { throw 'Application dependencies failed' }
+          if (-not (Test-Path 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe')) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -notin 0,1641,3010) { throw 'Inno Setup installation failed' }
+          }
+          New-Item -ItemType Directory -Force build/reuse,build/checks,build/logs,artifacts/windows | Out-Null
+      - name: Reuse published CPU and optional GPU workers
+        run: |
+          $ErrorActionPreference='Stop'
+          gh release download community-v1.2.2 --repo $env:GITHUB_REPOSITORY --pattern ScieFig_1.2.2_CPU_Setup.exe --pattern ScieFig_GPU_cellpose3_torch212_win64_v1.zip --dir build/reuse
+          if ($LASTEXITCODE) { throw 'Published runtime download failed' }
+          $cpu=Join-Path $PWD 'build/reuse/cpu-app'
+          $installer=Join-Path $PWD 'build/reuse/ScieFig_1.2.2_CPU_Setup.exe'
+          $installArguments=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/NOICONS',"/DIR=`"$cpu`"","/LOG=`"$PWD/build/logs/baseline-install.log`"")
+          $process=Start-Process -FilePath $installer -ArgumentList $installArguments -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode) { throw 'CPU baseline installation failed' }
+          $runtime=Get-Content "$cpu/cellpose/runtime.json" -Raw | ConvertFrom-Json
+          if ($runtime.id -ne 'cellpose3-torch212-win64-v1' -or $runtime.device -ne 'cpu') { throw 'CPU runtime identity mismatch' }
+          $release=gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/community-v1.2.2" | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'Published GPU metadata failed' }
+          $gpu=@($release.assets | Where-Object name -EQ ScieFig_GPU_cellpose3_torch212_win64_v1.zip)
+          if ($gpu.Count -ne 1 -or $gpu[0].digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'Published GPU digest missing' }
+          @{id=$runtime.id;url=$gpu[0].browser_download_url;size=$gpu[0].size;sha256=$gpu[0].digest.Substring(7)} | ConvertTo-Json | Set-Content build/reuse/model_runtime.json -Encoding utf8NoBOM
+          .venv/Scripts/python.exe packaging/windows_candidate_checks.py prepare-gpu build/reuse/ScieFig_GPU_cellpose3_torch212_win64_v1.zip build/reuse/model_runtime.json build/reuse/gpu-cache
+          if ($LASTEXITCODE) { throw 'Existing GPU component import failed' }
+          @'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'packaging')
+          from installer_files import identical_bytes
+          cpu=Path('build/reuse/cpu-app/cellpose/_internal/models')
+          gpu=Path('build/reuse/gpu-cache/cellpose3-torch212-win64-v1/cuda/_internal/models')
+          custom=('cyto3_dapi_reviewed_v1','cyto3_he_fiber_boundary_v1','cyto3_laminin_final_v1','truefad_myotube.pt')
+          for name in ('cyto3','nucleitorch_0',*custom):
+              assert identical_bytes(cpu/name,gpu/name), name
+          for name in custom:
+              assert identical_bytes(cpu/name,Path('packaging/models')/name), name
+          print('Published CPU/GPU models match the formal source assets')
+          '@ | .venv/Scripts/python.exe -
+          if ($LASTEXITCODE) { throw 'Published model/source mismatch' }
+      - name: Check formal source and packaging
+        run: |
+          .venv/Scripts/python.exe -c "from core.constants import SOFTWARE_VERSION; assert SOFTWARE_VERSION == '1.2.3'"
+          if ($LASTEXITCODE) { throw 'Formal version mismatch' }
+          .venv/Scripts/python.exe -m pytest -x -q -p no:faulthandler tests/test_packaging_r095.py tests/test_installer_files.py tests/test_english_package.py tests/test_public_source.py tests/test_multiplex_spatial.py tests/test_spatial_results_model.py
+          if ($LASTEXITCODE) { throw 'Source checks failed' }
+      - name: Freeze the formal Windows application
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:PATH="$PWD/.venv/Scripts;$env:PATH"
+          $gpu="$PWD/build/reuse/gpu-cache/cellpose3-torch212-win64-v1/cuda"
+          $ocr="$PWD/build/reuse/cpu-app/_internal/build/local_style_runtime"
+          & packaging/build_r10.ps1 -PublicKeyPath resources/license_public_key.pem -DistRoot "$PWD/build/windows123" -CellposeDir $gpu -StyleRuntimeDir $ocr -GpuRuntimeManifest "$PWD/build/reuse/model_runtime.json" -SkipInstaller
+          if ($LASTEXITCODE) { throw 'Application freeze failed' }
+          $version=(Get-Item build/windows123/ScieFig_R10/ScieFig_R10.exe).VersionInfo
+          if ($version.FileVersion -ne '1.2.3' -or $version.ProductVersion -ne '1.2.3') { throw 'Executable version mismatch' }
+      - name: Prepare English-only application
+        run: |
+          $ErrorActionPreference='Stop'
+          .venv/Scripts/python.exe packaging/prepare_english.py build/english-source
+          if ($LASTEXITCODE) { throw 'English source preparation failed' }
+          .venv/Scripts/python.exe -c "from pathlib import Path; import shutil; source=Path('build/windows123/ScieFig_R10'); shutil.copytree(source,'build/english-app',ignore=lambda folder,names: ['cellpose'] if Path(folder)==source else [])"
+          if ($LASTEXITCODE) { throw 'English application staging failed' }
+          .venv/Scripts/python.exe packaging/update_frozen_application.py build/english-app/ScieFig_R10.exe --root build/english-source --module core.utils.i18n --module ui.main_window --module ui.controllers.workflow_presentation_controller --module ui.widgets.project_welcome_dialog
+          if ($LASTEXITCODE) { throw 'English frozen modules failed' }
+      - name: Compile three installers
+        run: |
+          $ErrorActionPreference='Stop'
+          $app="$PWD/build/windows123/ScieFig_R10"
+          $cpu="$PWD/build/reuse/cpu-app/cellpose"
+          $english="$PWD/build/english-app"
+          .venv/Scripts/python.exe packaging/installer_files.py $app build/full.iss
+          if ($LASTEXITCODE) { throw 'Full installer listing failed' }
+          .venv/Scripts/python.exe packaging/installer_files.py $app build/cpu.iss $cpu
+          if ($LASTEXITCODE) { throw 'CPU installer listing failed' }
+          .venv/Scripts/python.exe packaging/installer_files.py $english build/english-files.iss $cpu
+          if ($LASTEXITCODE) { throw 'English installer listing failed' }
+          if (Select-String -Path build/cpu.iss,build/english-files.iss -Pattern 'torch_cuda\.dll|cublas.*\.dll') { throw 'CUDA payload in CPU installer listing' }
+          $iss=Get-Content packaging/ScieFig_R10.iss -Raw
+          $iss=$iss.Replace('AppId={{0C73A76E-0E1D-49D2-A2D1-9809DE8926BE}','AppId={{3DD29264-84D7-4DFA-9413-0504AAEC2106}')
+          $iss=$iss.Replace('AppName=ScieFig','AppName=ScieFig English').Replace('DefaultDirName={autopf}\ScieFig','DefaultDirName={autopf}\ScieFig English').Replace('DefaultGroupName=ScieFig','DefaultGroupName=ScieFig English')
+          $iss=$iss.Replace('Name: "{autoprograms}\ScieFig"','Name: "{autoprograms}\ScieFig English"').Replace('Name: "{autodesktop}\ScieFig"','Name: "{autodesktop}\ScieFig English"')
+          $iss=$iss.Replace('ScieFig.Project','ScieFig.English.Project').Replace('LicenseFile=..\LICENSE',"LicenseFile=$PWD\LICENSE")
+          $iss=$iss.Replace('[Tasks]',"[Languages]`nName: `"english`"; MessagesFile: `"compiler:Default.isl`"`n`n[Tasks]")
+          $iss | Set-Content build/english.iss -Encoding utf8NoBOM
+          $iscc='C:/Program Files (x86)/Inno Setup 6/ISCC.exe'
+          $variants=@(
+            @{Name='ScieFig_1.2.3_Setup';App=$app;Files="$PWD/build/full.iss";Script="$PWD/packaging/ScieFig_R10.iss"},
+            @{Name='ScieFig_1.2.3_CPU_Setup';App=$app;Files="$PWD/build/cpu.iss";Script="$PWD/packaging/ScieFig_R10.iss"},
+            @{Name='ScieFig_1.2.3_English_CPU_Setup';App=$english;Files="$PWD/build/english-files.iss";Script="$PWD/build/english.iss"}
+          )
+          $processes=@()
+          foreach ($variant in $variants) {
+            $compilerArguments=@("/F$($variant.Name)","/DDistDir=`"$($variant.App)`"","/DOutputDir=`"$PWD/artifacts/windows`"","/DIconFile=`"$PWD/resources/icons/sciefig_app_icon.ico`"","/DFilesList=`"$($variant.Files)`"","`"$($variant.Script)`"")
+            $processes+=@{Variant=$variant;Process=(Start-Process -FilePath $iscc -ArgumentList $compilerArguments -WindowStyle Hidden -PassThru -RedirectStandardOutput "build/logs/$($variant.Name).log" -RedirectStandardError "build/logs/$($variant.Name)-error.log")}
+            Write-Output "Started $($variant.Name)"
+          }
+          foreach ($item in $processes) {
+            $item.Process.WaitForExit()
+            Get-Content "build/logs/$($item.Variant.Name).log" -Tail 8
+            if ($item.Process.ExitCode) { throw "Installer compilation failed: $($item.Variant.Name)" }
+          }
+          $installers=@(Get-ChildItem artifacts/windows/*.exe)
+          if ($installers.Count -ne 3 -or ($installers | Where-Object Length -GE 2GB)) { throw 'Unexpected installer count or release asset size' }
+      - name: Install and verify the actual packages
+        run: |
+          $ErrorActionPreference='Stop'
+          $variants=@(
+            @{Name='ScieFig_1.2.3_Setup';Flavor='full'},
+            @{Name='ScieFig_1.2.3_CPU_Setup';Flavor='cpu'},
+            @{Name='ScieFig_1.2.3_English_CPU_Setup';Flavor='english'}
+          )
+          foreach ($variant in $variants) {
+            $target="$PWD/build/installed/$($variant.Flavor)"
+            $setup="$PWD/artifacts/windows/$($variant.Name).exe"
+            $process=Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/NOICONS',"/DIR=`"$target`"","/LOG=`"$PWD/build/logs/$($variant.Flavor)-install.log`"") -WindowStyle Hidden -PassThru -Wait
+            if ($process.ExitCode) { throw "Actual installation failed: $($variant.Name)" }
+            .venv/Scripts/python.exe packaging/windows_candidate_checks.py verify-app $target $variant.Flavor "$PWD/build/reuse/gpu-cache" "$PWD/build/checks/$($variant.Flavor)"
+            if ($LASTEXITCODE) { throw "Installed application checks failed: $($variant.Name)" }
+          }
+          # Upgrade the real 1.2.2 CPU installation in place as a separate check.
+          $upgrade="$PWD/build/reuse/cpu-app"
+          Set-Content "$upgrade/user-project-preservation.txt" 'user content'
+          $process=Start-Process -FilePath "$PWD/artifacts/windows/ScieFig_1.2.3_CPU_Setup.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/NOICONS',"/DIR=`"$upgrade`"") -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode) { throw '1.2.2 to 1.2.3 upgrade failed' }
+          if ((Get-Content "$upgrade/user-project-preservation.txt") -ne 'user content') { throw 'Upgrade removed user content' }
+          .venv/Scripts/python.exe packaging/windows_candidate_checks.py verify-app $upgrade cpu "$PWD/build/reuse/gpu-cache" "$PWD/build/checks/upgrade"
+          if ($LASTEXITCODE) { throw 'Upgraded application checks failed' }
+          @{version='1.2.3';commit=$env:GITHUB_SHA;run=$env:GITHUB_RUN_ID;packages=@(Get-ChildItem artifacts/windows/*.exe | Select-Object Name,Length);upgrade='passed';gpu_component='cellpose3-torch212-win64-v1'} | ConvertTo-Json -Depth 5 | Set-Content artifacts/windows/windows-candidate.json -Encoding utf8NoBOM
+      - name: Stage installers for Mac publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScieFig-1.2.3-Windows-installers
+          path: artifacts/windows/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Retain build verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScieFig-1.2.3-Windows-checks
+          path: |
+            build/checks/**/*.json
+            build/checks/**/*-ok.txt
+            build/checks/**/*-stderr.txt
+            build/logs/*.log
+          retention-days: 30
