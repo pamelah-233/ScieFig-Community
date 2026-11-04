@@ -13,6 +13,8 @@ Windows 1.2.3 is being built; [Windows 1.2.2](https://github.com/pamelah-233/Sci
 > **NVIDIA GPU**：Windows 基础包可另行安装 GPU 加速组件；完整离线安装包已经包含，无需重复安装。Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。
 > Windows basic installers support a separate NVIDIA GPU component; the complete installer already includes it. The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
 
+[Windows NVIDIA GPU 补充包 / Windows NVIDIA GPU component](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_GPU_cellpose3_torch212_win64_v1.zip)
+
 ## 1.2.3 重要更新：多标记表型与细胞邻域
 ### New in 1.2.3: multi-marker phenotypes and cell neighborhoods
 
