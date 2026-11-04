@@ -3,10 +3,42 @@
 科研数据与图像分析、绘图和组版。<br>
 Scientific data and image analysis, plotting and figure assembly.
 
-[下载 Windows 1.2.2 / Download Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) · [下载 macOS 1.2.2 / Download macOS 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) · [使用说明 / Getting started](docs/GETTING_STARTED.md)
+## 下载 / Download
 
-> **NVIDIA GPU**：基础包可另行安装 GPU 加速组件；完整离线安装包已经包含，无需重复安装。
-> The basic installer supports a separate NVIDIA GPU component. The full offline installer already includes it.
+**[macOS 1.2.3 · DMG · Apple Silicon](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_macOS_arm64.dmg)** · [1.2.3 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.3) · [使用说明 / Getting started](docs/GETTING_STARTED.md)
+
+Windows 1.2.3 正在构建；目前可下载 [Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2)。[历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)。<br>
+Windows 1.2.3 is being built; [Windows 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2) remains available.
+
+> **NVIDIA GPU**：Windows 基础包可另行安装 GPU 加速组件；完整离线安装包已经包含，无需重复安装。Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。
+> Windows basic installers support a separate NVIDIA GPU component; the complete installer already includes it. The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
+
+## 1.2.3 重要更新：多标记表型与细胞邻域
+### New in 1.2.3: multi-marker phenotypes and cell neighborhoods
+
+从多通道组织图像出发，在同一工作台完成核分割复核、标记组合识别和空间邻域分析。<br>
+Review nuclear segmentation, classify marker combinations, and analyze cell neighborhoods in one workbench.
+
+- **多标记表型**：复用 DAPI 核分割，按原始 marker 信号和可调整阈值识别组合。
+- **最近邻距离**：选择来源表型 A 与目标表型 B，逐个计算 A 细胞到最近 B 细胞的核质心距离。
+- **邻域组成与结果联动**：统计指定半径内的细胞，点选查看位置、marker 均值和邻居，支持 CSV 导出。
+- **Mac 界面与性能**：修复分析完成时侧栏文字挤压；完整结果表按需加载，减少打开等待。
+
+Reuse DAPI nuclei for marker combinations, calculate A→B nearest-neighbor distances, inspect radius-based neighborhoods, and export per-cell CSV results. Detailed result tables load on demand.
+
+![ScieFig 扁桃体多标记表型与细胞邻域工作台](docs/showcase/1.2.3/tonsil-overview.png)
+
+<details>
+<summary>查看核分割和最近邻分析操作 / View the workflow screenshots</summary>
+
+![DAPI 核分割操作](docs/showcase/1.2.3/tonsil-nuclei.png)
+
+![来源 A、目标 B 与最近邻计算](docs/showcase/1.2.3/tonsil-nearest-neighbor.png)
+
+</details>
+
+**图片来源 / Image credit**：Anna Pascual-Reguant et al., *Multiplexed histology analyses for the phenotypic and spatial characterization of human innate lymphoid cells*, **Nature Communications 12, 1737 (2021)**。[原论文 / Paper](https://www.nature.com/articles/s41467-021-21994-8) · [MELC 扁桃体原始数据 / Dataset](https://doi.org/10.5281/zenodo.3744152) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)。本例从同一视野选取 DAPI、CD3、CD8、CD45；伪彩、分割轮廓与界面截图由 ScieFig 生成。标记阈值应结合实验对照校准，图示组合不等同于已验证的细胞类型。<br>
+Original tissue images are from the cited MELC dataset. ScieFig generated the false-color views, contours and interface screenshots. Marker cutoffs require experimental controls; displayed combinations do not establish cell identity.
 
 ## qPCR
 
