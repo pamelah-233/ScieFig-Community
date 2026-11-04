@@ -1,9 +1,9 @@
 """Read-only spatial results and overlays on the existing fluorescence canvas."""
 import json
 import numpy as np
-from PyQt6.QtCore import Qt, QRectF, QEvent
+from PyQt6.QtCore import Qt, QRectF, QEvent, QAbstractTableModel, QModelIndex
 from PyQt6.QtGui import QColor, QPixmap, QPainter, QPen, QBrush, QPainterPath
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView, QWidget, QSplitter, QComboBox, QPushButton, QScrollArea
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget, QTableView, QTableWidget, QTableWidgetItem, QHeaderView, QWidget, QSplitter, QComboBox, QPushButton
 from core.utils.i18n import tr
 from ui.widgets.fluoro_canvas import ImageCoordinateMapper
 
@@ -113,6 +113,83 @@ def histogram(values, unit, width=480):
     painter.end(); return pixmap
 
 
+class _SpatialResultModel(QAbstractTableModel):
+    """Format result cells only when the view needs them."""
+    def __init__(self, rows, colors, parent):
+        super().__init__(parent)
+        self.rows = rows
+        self.fields = list(rows[0]) if rows else []
+        self.headers = []
+        for field in self.fields:
+            key = 'spatial_col_' + field
+            label = tr(key)
+            self.headers.append(field if label == key else label)
+        self.colors = colors
+        self._brushes = {}
+        self._order = list(range(len(rows)))
+
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self.rows)
+
+    def columnCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self.fields)
+
+    def headerData(self, section, orientation, role):
+        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+            return self.headers[section]
+        return super().headerData(section, orientation, role)
+
+    @staticmethod
+    def _text(value):
+        if value is None:
+            return '—'
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False)
+        return f'{value:.6g}' if isinstance(value, float) else str(value)
+
+    def data(self, index, role):
+        if not index.isValid():
+            return None
+        row = self.rows[self._order[index.row()]]
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
+            return self._text(row.get(self.fields[index.column()], ''))
+        if role == Qt.ItemDataRole.UserRole:
+            return row.get('object_id')
+        if role == Qt.ItemDataRole.ForegroundRole:
+            shade = '#777777' if row.get('include_in_statistics') is False else self.colors.get(row.get('phenotype'))
+            if shade:
+                if shade not in self._brushes:
+                    self._brushes[shade] = QBrush(QColor(shade))
+                return self._brushes[shade]
+        return None
+
+    def sort(self, column, order):
+        if not 0 <= column < len(self.fields) or len(self.rows) < 2:
+            return
+        field = self.fields[column]
+        present, missing = [], []
+        for i in self._order:
+            value = self.rows[i].get(field)
+            if value is None:
+                missing.append(i)
+            else:
+                key = (0, value) if isinstance(value, (int, float)) else (1, self._text(value).casefold())
+                present.append((key, i))
+        present.sort(key=lambda item: item[0], reverse=order == Qt.SortOrder.DescendingOrder)
+        self.layoutAboutToBeChanged.emit()
+        indexes = self.persistentIndexList()
+        if indexes:
+            tracked = {self._order[index.row()] for index in indexes}
+        new_order = [i for _, i in present] + missing
+        if indexes:
+            positions = {i: row for row, i in enumerate(new_order) if i in tracked}
+            self.changePersistentIndexList(indexes, [
+                self.index(positions[self._order[index.row()]], index.column()) for index in indexes
+            ])
+        self._order = new_order
+        self.layoutChanged.emit()
+
+
 class SpatialResultsDialog(QDialog):
     def __init__(self, controller):
         super().__init__(controller.window)
@@ -125,30 +202,48 @@ class SpatialResultsDialog(QDialog):
         graph = QLabel(); graph.setPixmap(histogram(result.get('nearest_distances', []), unit)); top.addWidget(graph)
         self.inspector = QLabel(tr('spatial_inspect_hint')); self.inspector.setWordWrap(True); layout.addWidget(self.inspector)
         tabs = QTabWidget(); layout.addWidget(tabs, 1); self.tables = {}
-        cells = controller.cell_rows(result)
-        colors={row['phenotype']:row['overlay_color'] for row in result['object_table']}
-        sets = [('spatial_phenotypes', result['phenotypes']), ('spatial_cells', cells),
-                ('spatial_neighbors', [r for r in cells if r.get('target_count_in_radius') is not None]),
-                ('spatial_niches', result.get('niches', [])), ('spatial_groups', controller.group_rows())]
-        for key, rows in sets:
-            fields = list(rows[0]) if rows else []
-            table = QTableWidget(len(rows), len(fields)); table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-            table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); table.setSortingEnabled(False)
-            table.setHorizontalHeaderLabels([tr('spatial_col_'+f) if tr('spatial_col_'+f) != 'spatial_col_'+f else f for f in fields])
-            table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-            for i, row in enumerate(rows):
-                for j, field in enumerate(fields):
-                    value = row.get(field, ''); value = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
-                    if isinstance(value, float): value = f'{value:.6g}'
-                    item = QTableWidgetItem('—' if value is None else str(value)); item.setToolTip(item.text())
-                    shade=colors.get(row.get('phenotype'))
-                    if row.get('include_in_statistics') is False:shade='#777777'
-                    if shade:item.setForeground(QColor(shade))
-                    item.setData(Qt.ItemDataRole.UserRole, row.get('object_id')); table.setItem(i, j, item)
-            table.resizeColumnsToContents(); table.setSortingEnabled(True)
-            table.cellClicked.connect(lambda row, col, t=table: controller.select_cell(t.item(row, col).data(Qt.ItemDataRole.UserRole))
-                                      if t.item(row, col).data(Qt.ItemDataRole.UserRole) is not None else None)
-            tabs.addTab(table, tr(key)); self.tables[key] = table
+        colors = {row['phenotype']: row['overlay_color'] for row in result['object_table']}
+        groups = controller.group_rows()
+        cells = None
+
+        def cell_rows():
+            nonlocal cells
+            if cells is None:
+                cells = controller.cell_rows(result)
+            return cells
+
+        sets = (
+            ('spatial_phenotypes', lambda: result['phenotypes']),
+            ('spatial_cells', cell_rows),
+            ('spatial_neighbors', lambda: [row for row in cell_rows() if row.get('target_count_in_radius') is not None]),
+            ('spatial_niches', lambda: result.get('niches', [])),
+            ('spatial_groups', lambda: groups),
+        )
+        pending = {}
+        for key, load_rows in sets:
+            table = QTableView()
+            table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+            header = table.horizontalHeader()
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            header.setResizeContentsPrecision(32)
+            header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+            table.clicked.connect(lambda index: controller.select_cell(index.data(Qt.ItemDataRole.UserRole))
+                                  if index.data(Qt.ItemDataRole.UserRole) is not None else None)
+            tabs.addTab(table, tr(key))
+            self.tables[key] = table
+            pending[table] = load_rows
+
+        def prepare_tab(index):
+            table = tabs.widget(index)
+            load_rows = pending.pop(table, None)
+            if load_rows is None:
+                return
+            table.setModel(_SpatialResultModel(load_rows(), colors, table))
+            table.setSortingEnabled(True)
+            table.resizeColumnsToContents()
+
+        tabs.currentChanged.connect(prepare_tab)
+        prepare_tab(tabs.currentIndex())
         note = QLabel(tr('spatial_result_note')); note.setWordWrap(True); layout.addWidget(note)
 
 

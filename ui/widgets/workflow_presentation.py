@@ -7,6 +7,39 @@ from PyQt6.QtWidgets import QBoxLayout, QFrame, QGraphicsOpacityEffect, QHBoxLay
 from core.utils.i18n import tr
 
 
+def refresh_workflow_scroll_geometry(widget):
+    """Lay out nested compact pages before a scrollable workbench repaints."""
+    widget.layout().invalidate()
+    widget.layout().activate()
+    child = widget
+    parent = widget.parentWidget()
+    while parent is not None:
+        layout = parent.layout()
+        if isinstance(layout, QBoxLayout):
+            # Refresh stale QWidgetItem height caches before painting.
+            index = layout.indexOf(child)
+            if index >= 0:
+                stretch = layout.stretch(index)
+                item = layout.takeAt(index)
+                layout.insertWidget(index, child, stretch, item.alignment())
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        update = getattr(parent, '_sync_current_page_geometry', None)
+        if callable(update):
+            update()
+            parent._parent_refresh.stop()
+        if isinstance(parent, QScrollArea):
+            body = parent.widget()
+            width = parent.viewport().width()
+            height = body.heightForWidth(width) if body.hasHeightForWidth() else body.sizeHint().height()
+            body.resize(width, max(parent.viewport().height(), body.minimumSizeHint().height(), height))
+            break
+        parent.updateGeometry()
+        child = parent
+        parent = parent.parentWidget()
+
+
 class _DisclosureToggle(QToolButton):
     def __init__(self):
         super().__init__()
@@ -107,34 +140,7 @@ class WorkflowDisclosure(QWidget):
         self._fade_effect = None
 
     def _update_stack_geometry(self):
-        self.layout().activate()
-        child = self
-        parent = self.parentWidget()
-        while parent is not None:
-            layout = parent.layout()
-            if isinstance(layout, QBoxLayout):
-                # Refresh stale QWidgetItem height caches before painting.
-                index = layout.indexOf(child)
-                if index >= 0:
-                    stretch = layout.stretch(index)
-                    item = layout.takeAt(index)
-                    layout.insertWidget(index, child, stretch, item.alignment())
-            if layout is not None:
-                layout.invalidate()
-                layout.activate()
-            update = getattr(parent, '_sync_current_page_geometry', None)
-            if callable(update):
-                update()
-                parent._parent_refresh.stop()
-            if isinstance(parent, QScrollArea):
-                body = parent.widget()
-                width = parent.viewport().width()
-                height = body.heightForWidth(width) if body.hasHeightForWidth() else body.sizeHint().height()
-                body.resize(width, max(parent.viewport().height(), body.minimumSizeHint().height(), height))
-                break
-            parent.updateGeometry()
-            child = parent
-            parent = parent.parentWidget()
+        refresh_workflow_scroll_geometry(self)
 
     def retranslate(self):
         self.toggle.setText(tr(self.title_key))
@@ -242,4 +248,5 @@ class WorkflowActionFooter(QFrame):
     def retranslate(self):
         self.previous.setText('← ' + tr('workflow_previous'))
         self.following.setText(tr('workflow_next') + ' →')
+
 

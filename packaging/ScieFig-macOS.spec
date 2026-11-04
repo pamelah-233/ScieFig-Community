@@ -4,6 +4,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metada
 
 root = Path(SPECPATH).parent
 community_version = runpy.run_path(str(root / 'core/constants.py'))['SOFTWARE_VERSION']
+bundle_version = community_version.split('-', 1)[0]
 datas = [(str(root / 'resources'), 'resources'), (str(root / 'config'), 'config')]
 datas += [(str(root / name), '.') for name in ('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md')]
 datas += [(str(root / 'LICENSES'), 'THIRD_PARTY_LICENSES/ScieFig-Models'),
@@ -14,7 +15,7 @@ for source in ('engine.py', 'preview.py'):
     datas.append((str(root / 'ui/local_style_extraction' / source), 'ui/local_style_extraction'))
 binaries, hidden = [], ['czifile', 'nd2', 'openpyxl', 'tifffile', 'Vision',
                        'matplotlib.backends.backend_svg', 'matplotlib.backends.backend_pdf']
-for package in ('nd2', 'openpyxl', 'pymupdf', 'fontTools'):
+for package in ('nd2', 'openpyxl', 'pymupdf', 'fontTools', 'imagecodecs'):
     package_data, package_binaries, package_hidden = collect_all(package)
     datas += package_data
     binaries += package_binaries
@@ -33,10 +34,10 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='ScieFig',
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='ScieFig')
 app = BUNDLE(coll, name='ScieFig.app',
              icon=str(root / 'build/macos/ScieFig.icns'),
-             bundle_identifier='com.sciefig.desktop', version=community_version,
+             bundle_identifier='com.sciefig.desktop', version=bundle_version,
              info_plist={
                  'CFBundleDisplayName': 'ScieFig',
-                 'CFBundleShortVersionString': community_version,
+                 'CFBundleShortVersionString': bundle_version,
                  'NSHighResolutionCapable': True,
                  'NSPrincipalClass': 'NSApplication',
                  'NSHumanReadableCopyright': 'Copyright (C) 2026 pamelah-233 and contributors',
@@ -54,3 +55,4 @@ app = BUNDLE(coll, name='ScieFig.app',
                      'UTTypeTagSpecification': {'public.filename-extension': ['sfig']},
                  }],
              })
+

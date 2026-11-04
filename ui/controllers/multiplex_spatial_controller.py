@@ -494,7 +494,13 @@ class MultiplexSpatialController(QObject):
     def busy_changed(self, key, busy):
         if key == self.job_key:
             self.controls.body.setEnabled(not busy)
-            if not busy: self.sync()
+            if not busy:
+                self.sync()
+                if self.controls.body.isVisible():
+                    # The summary, cell details and legend can gain several
+                    # lines at once. Resize the compact pages before painting.
+                    from ui.widgets.workflow_presentation import refresh_workflow_scroll_geometry
+                    refresh_workflow_scroll_geometry(self.controls.body)
 
     def open_review(self):
         result = self.current_result()
