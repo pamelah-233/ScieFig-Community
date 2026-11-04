@@ -105,7 +105,7 @@ def spatial_metrics(result, source_code, target_code, radius_um=20., permutation
     neighbors = np.asarray(tree.query_ball_point(xy[source], radius_um, return_length=True))-int(same_type)
     finite = nearest[np.isfinite(nearest)]
     null_mean, p = None, None
-    if len(finite) and permutations:
+    if len(finite) and permutations and len(np.unique(codes)) > 1:
         observed = finite.mean()
         rng = np.random.default_rng(773)
         null = []

@@ -84,8 +84,12 @@ def main() -> int:
         app.project_window = window
         window.show()
         splash.finish()
-        from ui.widgets.project_welcome_dialog import schedule_project_welcome
-        schedule_project_welcome(window, resources_dir)
+        if '--wb-demo' in sys.argv:
+            from ui.wb_demo import prepare_demo
+            prepare_demo(window)
+        else:
+            from ui.widgets.project_welcome_dialog import schedule_project_welcome
+            schedule_project_welcome(window, resources_dir)
         if os.environ.get('SCIEFIG_RELEASE_SMOKE') == '1':
             from PyQt6.QtCore import QTimer
             def finish_release_smoke():
@@ -96,7 +100,7 @@ def main() -> int:
             QTimer.singleShot(3000, finish_release_smoke)
         if app.pending_projects:
             app.open_pending_projects()
-        else:
+        elif '--wb-demo' not in sys.argv:
             schedule_startup_project(window, sys.argv[1:])
         return app.exec()
     finally:

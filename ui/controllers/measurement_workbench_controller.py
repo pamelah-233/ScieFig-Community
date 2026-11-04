@@ -118,6 +118,12 @@ class MeasurementWorkbenchController(QObject):
             self.display_section=section
         self.task_title=QLabel();self.task_title.setObjectName('MeasurementTaskHeading');self.task_title.setWordWrap(True)
         host.layout().insertWidget(0,self.task_title)
+        self.task_description=QLabel();self.task_description.setWordWrap(True)
+        self.task_description.setTextFormat(Qt.TextFormat.PlainText)
+        self.task_description.setObjectName('DimLabel');self.task_description.setMinimumWidth(0)
+        from PyQt6.QtWidgets import QSizePolicy
+        self.task_description.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred)
+        host.layout().insertWidget(1,self.task_description)
         if sys.platform in {'darwin', 'win32'}:
             # The context page originally ended in a stretch. New task pages
             # were appended after it, leaving an expanding gap inside the form.
@@ -222,11 +228,13 @@ class MeasurementWorkbenchController(QObject):
             self.stack.setCurrentWidget(self.pages[task])
             if self.shared is not None:self.shared.setVisible(task in ('cells','area','fiber'))
             if hasattr(self,'task_title'):self.task_title.setText(self.selector.currentText())
+            self.task_description.setText(tr('task_description_'+task))
             if task in self.controllers:self.controllers[task].sync()
             self.stack._sync_current_page_geometry()
             self.window.workflow_ui.schedule_sync() if hasattr(self.window,'workflow_ui') else None
             if task_changed:self.scroll.verticalScrollBar().setValue(0)
             self._selected_task=task
+            if self.module=='fluoro':self.controllers['spatial'].sync_overview(task=='spatial')
         finally:self._selecting=False
         pending=self._pending_task
         if pending is not None and pending!=task:
@@ -258,6 +266,7 @@ class MeasurementWorkbenchController(QObject):
 
     def sync_visibility(self,step):
         self.selector_wrap.setVisible(step==2)
+        if self.module=='fluoro':self.controllers['spatial'].sync_overview(step==2 and self.current_task()=='spatial')
         if step!=2 and self.image_group.parentWidget() is self.panel:
             self.panel.layout().removeWidget(self.image_group)
             layout,index=self._image_home;layout.insertWidget(max(0,index),self.image_group)
@@ -283,10 +292,13 @@ class MeasurementWorkbenchController(QObject):
         for key in self.selector.buttons:
             label='task_'+key if key in ('cells','area','fiber','he','central','dapi','myotube','phenotype','spatial','count_ratio','fusion') else 'workflow_task_'+key
             self.selector.setItemText(self.selector.findData(key),tr(label))
+            bind_i18n(self.selector.buttons[key],label)
+            bind_i18n(self.selector.buttons[key],'task_description_'+key,'toolTip')
         for section in self.panel.findChildren(WorkflowDisclosure):section.retranslate()
         for controller in self.controllers.values():
             if getattr(controller.controls,'relation_kind',None):controller.retranslate()
         self.task_title.setText(self.selector.currentText())
+        self.task_description.setText(tr('task_description_'+self.current_task()))
         readable_forms(self.stack)
         from ui.widgets.model_selection_hint import ModelSelectionHint
         for hint in self.panel.findChildren(ModelSelectionHint):hint.refresh()

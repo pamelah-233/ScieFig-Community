@@ -153,6 +153,13 @@ class MeasurementPreviewController(QObject):
                 return
             if controller is not None:
                 result = controller.current_result()
+                if getattr(controller, 'kind', None) == 'spatial':
+                    if result is None: workspace.canvas.clear_measurement_overlay()
+                    else: controller.draw_overlay(result)
+                    controller.sync_overview(True)
+                    has_overlay = bool(workspace.canvas._measurement_overlay_items)
+                    workspace._sync_ai_overlay_buttons(has_overlay=has_overlay, show_overlay=self._visible[module])
+                    return
                 records = self._controller_records(controller, result) if result is not None else []
                 if records:
                     workspace.canvas.show_ai_assisted_overlay(records)

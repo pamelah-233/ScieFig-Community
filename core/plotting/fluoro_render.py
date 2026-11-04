@@ -33,7 +33,7 @@ def should_render_original_rgb(
 
 
 def _rgb_components_are_identity(data, channels) -> bool:
-    maximum = float(np.iinfo(data.dtype).max) if np.issubdtype(data.dtype,np.integer) else float(np.nanmax(data[:3]) or 1.0)
+    maximum = rgb_sample_maximum(data)
     return len(channels) == 3 and all(
         int(channel.get("index",0)) == index
         and channel.get("visible",True)
@@ -45,8 +45,15 @@ def _rgb_components_are_identity(data, channels) -> bool:
     )
 
 
+def rgb_sample_maximum(data: np.ndarray) -> float:
+    # A shared scale preserves hue. Float RGB in [0, 1] uses the unit range,
+    # even when no sample reaches 1; alpha has its own unit range.
+    return float(np.iinfo(data.dtype).max) if np.issubdtype(data.dtype, np.integer) else max(1., float(np.nanmax(data[:3])))
+
+
 def render_original_rgb_qimage(data: np.ndarray) -> QImage:
-    rgb = np.stack([_identity_u8(data[0]), _identity_u8(data[1]), _identity_u8(data[2])], axis=-1)
+    maximum = rgb_sample_maximum(data)
+    rgb = np.stack([_identity_u8(data[i], maximum) for i in range(3)], axis=-1)
     if int(data.shape[0]) >= 4:
         alpha = _identity_u8(data[3])
         rgba = np.ascontiguousarray(np.concatenate([rgb, alpha[:, :, None]], axis=2))
@@ -112,13 +119,15 @@ def apply_rgb_sample_coverage(image: QImage, data: np.ndarray) -> QImage:
     return QImage(packed.data, width, height, packed.strides[0], QImage.Format.Format_RGBA8888).copy()
 
 
-def _identity_u8(plane: np.ndarray) -> np.ndarray:
+def _identity_u8(plane: np.ndarray, maximum: float | None = None) -> np.ndarray:
     if plane.dtype == np.uint8:
         return np.ascontiguousarray(plane)
-    if np.issubdtype(plane.dtype, np.integer):
+    if maximum is not None:
+        max_value = maximum
+    elif np.issubdtype(plane.dtype, np.integer):
         max_value = float(np.iinfo(plane.dtype).max) or 1.0
     else:
-        max_value = float(np.nanmax(plane) or 1.0)
+        max_value = max(1., float(np.nanmax(plane)))
         if max_value <= 0:
             max_value = 1.0
     scaled = np.clip(plane.astype(np.float32, copy=False) * (255.0 / max_value), 0, 255)

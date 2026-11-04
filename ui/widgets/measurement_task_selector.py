@@ -20,7 +20,7 @@ class MeasurementTaskSelector(QWidget):
         button=button or QPushButton(text);button.setText(text);button.setCheckable(True)
         button.setObjectName('MeasurementTaskButton');button.setMinimumWidth(0)
         button.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
-        button.setMinimumHeight(34);button.setMaximumHeight(16777215)
+        button.setMinimumHeight(34);button.setMaximumHeight(16777215);button.installEventFilter(self)
         self.grid.addWidget(button,index//2,index%2);self.group.addButton(button,index);self.buttons[value]=button
         button.clicked.connect(lambda checked=False,key=value:self.setCurrentIndex(self.findData(key)))
         if self._index<0:self.setCurrentIndex(0)
@@ -50,6 +50,29 @@ class MeasurementTaskSelector(QWidget):
     def event(self,event):
         result=super().event(event)
         if event.type() in (QEvent.Type.Resize,QEvent.Type.LayoutRequest,QEvent.Type.Show) and hasattr(self,'grid'):
-            from ui.widgets.responsive_action_grid import reflow_buttons
-            reflow_buttons(self.grid,[self.buttons[key] for key in self._keys],self.contentsRect().width())
+            self._layout_buttons()
         return result
+
+    def _layout_buttons(self):
+        from PyQt6.QtCore import QRect
+        width=self.contentsRect().width();columns=2 if width>=240 else 1
+        available=max(1,(width-6*(columns-1))//columns)
+        height=max([34]+[button.fontMetrics().boundingRect(QRect(0,0,max(1,available-24),1000),
+            Qt.TextFlag.TextWordWrap,button.text()).height()+16 for button in self.buttons.values()])
+        for i,key in enumerate(self._keys):
+            button=self.buttons[key];position=(i//columns,i%columns)
+            if self.grid.getItemPosition(self.grid.indexOf(button))[:2]!=position:
+                self.grid.removeWidget(button);self.grid.addWidget(button,*position)
+            if button.height()!=height:button.setFixedHeight(height)
+
+    def eventFilter(self,watched,event):
+        if event.type()==QEvent.Type.Paint and watched in self.buttons.values():
+            from PyQt6.QtWidgets import QStyleOptionButton,QStylePainter,QStyle
+            option=QStyleOptionButton();watched.initStyleOption(option);title=option.text;option.text=''
+            painter=QStylePainter(watched);painter.drawControl(QStyle.ControlElement.CE_PushButton,option)
+            rect=watched.style().subElementRect(QStyle.SubElement.SE_PushButtonContents,option,watched).adjusted(4,1,-4,-1)
+            from PyQt6.QtGui import QPalette
+            watched.style().drawItemText(painter,rect,Qt.AlignmentFlag.AlignCenter|Qt.TextFlag.TextWordWrap,
+                option.palette,watched.isEnabled(),title,QPalette.ColorRole.ButtonText)
+            return True
+        return super().eventFilter(watched,event)

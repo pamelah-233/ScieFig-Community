@@ -193,6 +193,7 @@ class MeasurementHistoryController(QObject):
                 if hasattr(controls,'channel') and record.get('channel_index') is not None:
                     with QSignalBlocker(controls.channel):controls.channel.setCurrentIndex(controls.channel.findData(record['channel_index']))
                 params=record.get('params',record.get('parameters',record.get('requested_parameters',{})))
+                if task=='spatial':params=record.get('requested_parameters',params)
                 setter=getattr(controls,'set_parameters',None) or controls.restore_parameters
                 setter(params)
                 if task=='central':controller.sync_sources(record)

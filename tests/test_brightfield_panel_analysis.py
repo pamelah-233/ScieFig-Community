@@ -356,6 +356,7 @@ def test_render_measurement_overlay_invalidates_mismatched_analysis_mask_cache(t
     monkeypatch.setattr(brightfield_panel_module, "analyze_brightfield_image", counting_analyze)
     measurement = panel.create_measurement(settings=_settings())
     assert len(analyze_settings) == 1
+    old_cache_key = panel._brightfield_analysis_mask_cache[measurement['measurement_uuid']]['cache_key']
 
     measurement["params"]["h_min"] = 0.5
     measurement["params"]["h_max"] = 0.6
@@ -364,7 +365,11 @@ def test_render_measurement_overlay_invalidates_mismatched_analysis_mask_cache(t
     assert overlay.shape == (6, 6, 3)
     assert len(analyze_settings) == 2
     assert analyze_settings[-1]["h_min"] == 0.5
-    assert measurement["measurement_uuid"] not in panel._brightfield_analysis_mask_cache
+    cached = panel._brightfield_analysis_mask_cache[measurement['measurement_uuid']]
+    assert cached['cache_key'] != old_cache_key
+    assert cached['cache_key'] == panel._brightfield_analysis_mask_cache_key(measurement)
+    np.testing.assert_array_equal(panel.render_measurement_overlay(measurement_uuid=measurement['measurement_uuid']), overlay)
+    assert len(analyze_settings) == 2
 
 
 def test_brightfield_analysis_mask_cache_is_transient_bounded_and_lru() -> None:

@@ -268,7 +268,7 @@ class NucleiCountController(QObject):
                 if channel_index is None or record.get('channel_interpretation',{}).get('mode')==RGB_COMPOSITE_MODE:
                     raise ValueError(tr('nuclei_choose_channel'))
                 source=panel.segmentation_input_data(record['uid'])[channel_index].copy()
-                measurement_source=panel.image_data(record['uid'])[channel_index].copy()
+                measurement_source=panel._analysis_stack(record,panel.image_data(record['uid']))[channel_index].copy()
                 if classification_params:
                     signal_channel=classification_params.get('channel_index')
                     if signal_channel is None:raise ValueError(tr('nuclei_choose_channel'))

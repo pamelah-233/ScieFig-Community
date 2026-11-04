@@ -14,6 +14,31 @@ LOW_SIGNAL_DENSITY_THRESHOLD = 20.0
 NEGATIVE_DENSITY_TOLERANCE = -100.0
 
 
+def wb_measurement_strips(panel_data: dict) -> list[dict]:
+    """The same ordered, cropped sources for measurement and canvas review."""
+    crops = panel_data.get('crops', [])
+    if crops:
+        return [dict(strip_id=crop['crop_id'], protein_name=crop.get('protein', ''),
+                     image_path=crop.get('image_path') or panel_data.get('image_path'),
+                     crop_roi=dict(crop['roi']),
+                     adjustments=crop.get('adjustments', panel_data.get('adjustments', {}))) for crop in crops]
+    strips = list(panel_data.get('band_strips', []))
+    placed = panel_data.get('placed_strip_ids', [])
+    if placed:
+        by_id = {str(strip['strip_id']): strip for strip in strips}
+        strips = [by_id[identifier] for identifier in placed if identifier in by_id]
+    return strips
+
+
+def wb_measurement_inputs(panel_data: dict) -> dict:
+    from copy import deepcopy
+    return deepcopy(dict(strips=[dict(strip_id=s['strip_id'], image_path=str(s.get('image_path', '')),
+        crop_roi=s.get('crop_roi', {}), protein_name=s.get('protein_name', ''),
+        geometry={k:s.get('adjustments', {}).get(k, 0 if k == 'rotation' else False)
+                  for k in ('rotation','flip_horizontal','flip_vertical')}) for s in wb_measurement_strips(panel_data)],
+        lanes={k:panel_data.get('annotations', {}).get(k) for k in ('lane_labels','lane_anchors','lane_anchor_width')}))
+
+
 def qimage_to_gray_numpy(image: QImage) -> np.ndarray:
     """Convert a QImage to a 2D uint8 grayscale array."""
     gray = image.convertToFormat(QImage.Format.Format_Grayscale8)
@@ -134,11 +159,7 @@ def measure_densitometry(
     rolling_ball_radius: int = 50,
 ) -> dict:
     """Measure all placed WB strips and normalize to a loading-control strip."""
-    strips = list(panel_data.get("band_strips", []))
-    placed_ids = list(panel_data.get("placed_strip_ids", []))
-    if placed_ids:
-        by_id = {str(strip.get("strip_id")): strip for strip in strips}
-        strips = [by_id[strip_id] for strip_id in placed_ids if strip_id in by_id]
+    strips = wb_measurement_strips(panel_data)
     if not strips:
         raise ValueError("No Western Blot strips are available for densitometry.")
 
@@ -169,6 +190,11 @@ def measure_densitometry(
             (index + 0.5) * pixels.shape[1] / max(len(lane_labels), 1)
             for index in range(len(lane_labels))
         ]
+        anchor_width = panel_data.get('annotations', {}).get('lane_anchor_width')
+        if lane_centers and anchor_width:
+            effective_lane_centers = [center*pixels.shape[1]/float(anchor_width) for center in lane_centers]
+        elif lane_centers and panel_data.get('crops'):
+            effective_lane_centers = [center-float(strip['crop_roi'].get('x', 0)) for center in lane_centers]
         boundaries = compute_lane_boundaries(effective_lane_centers, pixels.shape[1])
         if len(boundaries) != len(lane_labels):
             boundaries = compute_lane_boundaries(
@@ -266,6 +292,7 @@ def measure_densitometry(
         "background_method": background_method,
         "polarity_mode": polarity_mode,
         "measurement_basis": "raw_cropped",
+        "source_snapshot": wb_measurement_inputs(panel_data),
         "global_qc_flags": [],
         "measurements": measurements,
     }

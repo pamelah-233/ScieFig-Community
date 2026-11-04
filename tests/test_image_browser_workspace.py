@@ -394,7 +394,9 @@ def test_switching_to_new_folder_clears_previous_image(tmp_path) -> None:
 
         assert workspace.canvas._source_pixmap is None
         assert not workspace.canvas.placeholder.isHidden()
-        assert workspace.canvas.title.text() == "Open a folder to browse images"
+        from core.utils.i18n import tr
+        assert workspace.canvas.title.text() == tr('module_viewer_canvas')
+        assert workspace.canvas.body.text() == tr('viewer_empty')
     finally:
         workspace.close()
         workspace.deleteLater()

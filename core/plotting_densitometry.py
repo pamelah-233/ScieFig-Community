@@ -30,6 +30,7 @@ def build_densitometry_figure(
     exclude_loading_control: bool = True,
     preset_name: str | None = None,
     style: dict | None = None,
+    value_key: str = 'fold',
 ) -> Figure:
     """Build a bar chart from WB densitometry fold-change values."""
     from matplotlib import rc_context
@@ -43,7 +44,7 @@ def build_densitometry_figure(
         style = _resolved_plot_style(preset_name, style)
         series_colors = list(style.get("series_colors", [])) or [str(style.get("point_color", "#0F4D92"))]
         measurements = list(densitometry_result.get("measurements", []))
-        if exclude_loading_control:
+        if exclude_loading_control and value_key == 'fold':
             loading_id = str(densitometry_result.get("loading_control_strip_id", ""))
             measurements = [item for item in measurements if str(item.get("strip_id", "")) != loading_id]
         if not measurements:
@@ -63,7 +64,7 @@ def build_densitometry_figure(
             values = []
             qc_flags = []
             for lane in measurement.get("lanes", []):
-                fold = lane.get("fold")
+                fold = lane.get(value_key)
                 values.append(float(fold) if isinstance(fold, (int, float)) and not math.isnan(float(fold)) else np.nan)
                 qc_flags.append(list(lane.get("qc_flags", [])))
             finite_values = [value for value in values if not math.isnan(value)]
@@ -90,7 +91,7 @@ def build_densitometry_figure(
             )
         ax.set_xticks(x)
         ax.set_xticklabels(lane_labels, fontsize=float(style.get("tick_label_size_pt", 7.0)), fontfamily=str(style.get("font_family", "Arial")))
-        ax.set_ylabel("Relative expression (fold change)", fontsize=float(style.get("axis_label_size_pt", 8.0)), fontfamily=str(style.get("font_family", "Arial")))
+        ax.set_ylabel("Integrated density (a.u.)" if value_key == 'bg_subtracted' else "Relative expression (fold change)", fontsize=float(style.get("axis_label_size_pt", 8.0)), fontfamily=str(style.get("font_family", "Arial")))
         axis_line_width = float(style.get("axis_line_width", 0.6))
         ax.tick_params(axis="y", labelsize=float(style.get("tick_label_size_pt", 7.0)), width=float(style.get("tick_width", axis_line_width)), length=float(style.get("tick_length", 3.0)))
         ax.tick_params(axis="x", width=float(style.get("tick_width", axis_line_width)), length=0)

@@ -141,6 +141,8 @@ class WesternBlotPanel(BasePanel):
             "source_image": image_data.get("original_source", ""),
             "coordinate_space": "source_pixel",
             "non_destructive": True,
+            "image_path": self._default_source_path(),
+            "adjustments": deepcopy(self.data.get('adjustments', {})),
         }
         crops.append(crop)
         self.data["crops"] = crops

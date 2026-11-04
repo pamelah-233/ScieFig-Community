@@ -492,6 +492,9 @@ class FluorescenceWorkspace(QWidget):
         )
         self.force_split_rgb_button.clicked.connect(self.force_split_rgb_requested.emit)
         layout.addWidget(self.force_split_rgb_button)
+        self.rgb_split_hint = bind_i18n(QLabel(), 'spatial_rgb_hint')
+        self.rgb_split_hint.setWordWrap(True); self.rgb_split_hint.hide()
+        layout.addWidget(self.rgb_split_hint)
         self.save_active_image_button = QPushButton("Save Active Image TIFF")
         self.save_active_image_button.clicked.connect(self.save_active_image_requested.emit)
         layout.addWidget(self.save_active_image_button)
@@ -1785,6 +1788,7 @@ class FluorescenceWorkspace(QWidget):
         self._display_processing_controls = []
         image = self._active_image()
         if not image:
+            self.rgb_split_hint.hide()
             self.save_active_image_button.setEnabled(False)
             self.force_split_rgb_button.setEnabled(False)
             self.view_mode_combo.setEnabled(False)
@@ -1799,6 +1803,7 @@ class FluorescenceWorkspace(QWidget):
         auto_single_signal = interpretation_mode == "auto_single_signal"
         rgb_composite = interpretation_mode == RGB_COMPOSITE_MODE
         forced_rgb_split = interpretation_mode == "forced_rgb_split"
+        self.rgb_split_hint.setVisible(rgb_composite or forced_rgb_split)
         self.force_split_rgb_button.setEnabled(auto_single_signal or forced_rgb_split or rgb_composite)
         self.force_split_rgb_button.setText(tr("restore_auto_detection") if forced_rgb_split else tr("force_split_rgb"))
         self.force_split_rgb_button.setToolTip(
@@ -3371,6 +3376,14 @@ class FluorescenceWorkspace(QWidget):
             return
         source_channel = geometry.get("source_channel_index")
         channel = int(source_channel if source_channel is not None else (self.roi_channel_combo.currentData() or 0))
+        if self.measure_mode == "spatial":
+            clean_geometry = dict(geometry)
+            clean_geometry.pop("source_channel_index", None)
+            self.panel.add_roi(str(image['uid']), roi_type, clean_geometry, channel)
+            self.canvas.set_roi_mode("")
+            self.refresh()
+            self.analysis_context_changed.emit()
+            return
         if self.measure_mode == "ai_assisted":
             clean_geometry = dict(geometry)
             clean_geometry.pop("source_channel_index", None)
