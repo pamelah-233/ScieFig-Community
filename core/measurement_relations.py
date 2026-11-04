@@ -27,18 +27,14 @@ def _record_session(record, shape):
 
 def geometry_record(record, shape):
     session = _record_session(record, shape)
+    geometry = session.native_geometry()
     if record.get('instance_labels') and not record.get('object_review'):
-        # Saved instance pixels are authoritative. Rasterizing every contour
-        # first only to overwrite those masks scales with objects × image size.
         exact = unpack_instance_labels(record['instance_labels'], shape)
-        rows = session.objects
-        lookup = np.zeros(int(exact.max())+1, np.int32)
-        for index, row in enumerate(rows, 1):
-            row['label_id'] = index
-            if 0 <= row['object_id'] < len(lookup):
-                lookup[row['object_id']] = index
-        return dict(labels=lookup[exact], objects=rows, overlapping_ids=[], roi_mask=session.measurement_scope)
-    return session.native_geometry()
+        labels = np.zeros(shape, np.int32)
+        for row in geometry['objects']:
+            labels[exact == row['object_id']] = row['label_id']
+        geometry.update(labels=labels, overlapping_ids=[])
+    return geometry
 
 
 def _same_image(first, second):

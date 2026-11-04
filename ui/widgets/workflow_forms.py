@@ -1,16 +1,7 @@
 """Shared readable forms for workflow, browser and Composer sidebars."""
 import sys
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFormLayout, QLayout, QLabel, QComboBox, QAbstractSpinBox, QSizePolicy, QTableWidget, QHeaderView, QGroupBox
-
-
-def compact_sidebar_margins(root, outer_margin=10):
-    """Keep one sidebar gutter instead of accumulating nested layout insets."""
-    root.setProperty('compactSidebar', True)
-    for layout in root.findChildren(QLayout):
-        margins = layout.contentsMargins()
-        horizontal = outer_margin if layout is root.layout() else 0
-        layout.setContentsMargins(horizontal, margins.top(), horizontal, margins.bottom())
+from PyQt6.QtWidgets import QFormLayout, QLabel, QComboBox, QAbstractSpinBox, QSizePolicy, QTableWidget, QHeaderView, QGroupBox
 
 
 def readable_forms(root):

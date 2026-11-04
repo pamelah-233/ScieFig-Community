@@ -1,5 +1,6 @@
 """Per-channel display controls, separate from measurement parameters."""
-from PyQt6.QtCore import QSignalBlocker,pyqtSignal
+from pathlib import Path
+from PyQt6.QtCore import QDir,QSignalBlocker,pyqtSignal
 from PyQt6.QtWidgets import QBoxLayout,QCheckBox,QFormLayout,QGroupBox,QHBoxLayout,QLabel,QPushButton,QSizePolicy,QSpinBox
 from core.plotting.fluoro_display import display_settings
 from core.utils.i18n import bind_i18n, tr
@@ -12,6 +13,7 @@ class FluoroDisplayControls(QGroupBox):
     def __init__(self,settings=None,parent=None):
         super().__init__(parent)
         self.setObjectName('FluoroDisplayControls')
+        QDir.addSearchPath('sciefigSpin', str(Path(__file__).resolve().parents[2] / 'resources' / 'icons'))
         bind_i18n(self,'fluoro_display_optimization','title')
         form=QFormLayout(self)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)

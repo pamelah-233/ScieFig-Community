@@ -11,8 +11,6 @@ def collect_wb_stat_values(densitometry_runs: list[dict[str, Any]], target_strip
         measurements = list(run.get("measurements", []))
         if target_strip_label:
             measurements = [item for item in measurements if str(item.get("strip_label", "")) == target_strip_label]
-        else:
-            measurements = [item for item in measurements if str(item.get('strip_id', '')) != str(run.get('loading_control_strip_id', ''))]
         if not measurements:
             continue
         measurement = measurements[0]

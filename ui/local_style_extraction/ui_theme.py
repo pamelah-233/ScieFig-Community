@@ -214,7 +214,6 @@ QLineEdit, QComboBox, QAbstractSpinBox, QFontComboBox {
 QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus {
     border-color: $accent;
 }
-QSpinBox, QDoubleSpinBox { padding-right: 32px; }
 QComboBox QAbstractItemView {
     background: $raised;
     color: $text;
@@ -312,7 +311,6 @@ QWidget#StyleActionRow QPushButton[styleIconOnly="true"], QWidget#StylePaneTools
 }
 QWidget#StylePaneTools { background: $surface; border-bottom: 1px solid $border; }
 QWidget#StylePaneTools QComboBox, QWidget#StylePaneTools QSpinBox { min-height: 18px; padding: 2px 3px; }
-QWidget#StylePaneTools QSpinBox, QWidget#StylePaneTools QDoubleSpinBox { padding-right: 32px; }
 QPushButton#StageButton, QPushButton#StyleParameterTab { background: transparent; border-color: transparent; padding: 3px 4px; }
 QPushButton#StageButton:checked, QPushButton#StyleParameterTab:checked,
 QPushButton#LayoutButton:checked, QPushButton#ThemeButton:checked {

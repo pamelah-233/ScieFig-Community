@@ -12,9 +12,6 @@ class CurrentPageStackedWidget(QStackedWidget):
         self._parent_refresh=QTimer(self)
         self._parent_refresh.setSingleShot(True)
         self._parent_refresh.timeout.connect(self._refresh_parent_item)
-        self._page_refresh=QTimer(self)
-        self._page_refresh.setSingleShot(True)
-        self._page_refresh.timeout.connect(self._sync_current_page_geometry)
         if self._compact:
             self.setSizePolicy(QSizePolicy.Policy.Preferred,QSizePolicy.Policy.Maximum)
             self.currentChanged.connect(self._sync_current_page_geometry)
@@ -40,8 +37,6 @@ class CurrentPageStackedWidget(QStackedWidget):
 
     def _sync_current_page_geometry(self,*_args):
         if not self._compact:return
-        page=self.currentWidget()
-        if page is not None:page.installEventFilter(self)
         for index in range(self.count()):
             page=self.widget(index)
             policy=page.sizePolicy()
@@ -55,16 +50,6 @@ class CurrentPageStackedWidget(QStackedWidget):
             self._geometry_key=key
             self._parent_refresh.start(0)
         self.updateGeometry()
-
-    def eventFilter(self,watched,event):
-        # Nested channel forms can reflow after the stack's own resize event.
-        # A fixed compact height prevents that late layout request from reaching
-        # the stack, so refresh after the active page has finished laying out.
-        if (self._compact and watched is self.currentWidget() and event.type() in {
-            QEvent.Type.LayoutRequest,QEvent.Type.FontChange,QEvent.Type.LanguageChange,
-        }):
-            self._page_refresh.start(0)
-        return super().eventFilter(watched,event)
 
     def _refresh_parent_item(self):
         # A nested QWidgetItemV2 can retain the previous page's width/height

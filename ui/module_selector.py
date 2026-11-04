@@ -11,14 +11,14 @@ from core.utils.i18n import tr
 
 
 MODULES = (
-    ("qpcr", "qPCR", "module-qpcr.svg"),
-    ("wb", "WB", "module-wb.svg"),
-    ("fluoro", "Fluorescence", "module-fluoro.svg"),
-    ("ihc", "IHC", "module-ihc.svg"),
-    ("brightfield", "Brightfield", "module-brightfield.svg"),
-    ("viewer", "Image Browser", "module-viewer.svg"),
-    ("composer", "Composer", "module-composer.svg"),
-    ("stylelab", "Style Lab", "module-stylelab.svg"),
+    ("qpcr", "qPCR", "chart-column.svg"),
+    ("wb", "WB", "layers.svg"),
+    ("fluoro", "Fluorescence", "grid-3x3.svg"),
+    ("ihc", "IHC", "pipette.svg"),
+    ("brightfield", "Brightfield", "pipette.svg"),
+    ("viewer", "Image Browser", "grid-3x3.svg"),
+    ("composer", "Composer", "layout-grid.svg"),
+    ("stylelab", "Style Lab", "settings-2.svg"),
 )
 
 COMPACT_LABELS = {

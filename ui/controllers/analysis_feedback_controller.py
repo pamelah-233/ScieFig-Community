@@ -5,7 +5,6 @@ from PyQt6.QtCore import QObject, QTimer
 
 class AnalysisFeedbackController(QObject):
     MODULES = {
-        'multiplex_spatial': 'fluoro',
         'nuclei_fluoro': 'fluoro', 'nuclei_brightfield': 'brightfield',
         'central_nuclei': 'brightfield', 'myotube_fluoro': 'fluoro',
         'myotube_brightfield': 'brightfield', 'brightfield-cellpose': 'brightfield',

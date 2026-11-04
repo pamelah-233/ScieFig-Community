@@ -457,8 +457,6 @@ class DataInputPanel(QFrame):
         self.wb_density_polarity_combo = QComboBox()
         self.wb_density_polarity_combo.addItems(["Auto", "Dark bands on light bg", "Bright bands on dark bg"])
         self.wb_density_measure_button = QPushButton("Measure")
-        self.wb_density_value_toggle = bind_i18n(QPushButton(), 'wb_density_absolute')
-        self.wb_density_value_toggle.setCheckable(True)
         self.wb_density_measure_button.setObjectName("PrimaryButton")
         self.wb_density_result_table = QTableWidget(0, 0)
         self.wb_density_result_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1969,7 +1967,6 @@ class DataInputPanel(QFrame):
         density_page = QWidget()
         density_layout = QVBoxLayout(density_page)
         density_layout.addWidget(self.wb_density_hint_label)
-        density_layout.addWidget(self.wb_density_value_toggle)
         density_form = QFormLayout()
         density_form.addRow(self._i18n_form_label("loading_control"), self.wb_density_loading_ctrl_combo)
         density_form.addRow(self._i18n_form_label("reference_lane"), self.wb_density_reference_lane_combo)
@@ -4345,16 +4342,16 @@ class DataInputPanel(QFrame):
         qc_messages = []
         for row, measurement in enumerate(measurements):
             for column, lane in enumerate(measurement.get("lanes", [])):
-                fold = lane.get('fold' if self.wb_density_value_toggle.isChecked() else 'bg_subtracted')
+                fold = lane.get("fold")
                 text = "N/A"
                 if isinstance(fold, (int, float)) and fold == fold:
-                    text = f"{float(fold):.2f}" if self.wb_density_value_toggle.isChecked() else f"{float(fold):,.1f}"
+                    text = f"{float(fold):.2f}"
                 item = QTableWidgetItem(text)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 qc_flags = list(lane.get("qc_flags", []))
-                item.setToolTip(f"{tr('wb_density_absolute')}: {lane.get('bg_subtracted')}\n{tr('wb_density_normalized')}: {lane.get('fold')}\n"+', '.join(qc_flags))
                 if qc_flags:
                     item.setBackground(QColor(180, 120, 60))
+                    item.setToolTip(", ".join(qc_flags))
                     qc_messages.append(f"Lane {column + 1} ({measurement.get('strip_label', '')}): {', '.join(qc_flags)}")
                 elif str(measurement.get("strip_id", "")) == loading_ctrl_id:
                     item.setBackground(QColor(80, 80, 80))

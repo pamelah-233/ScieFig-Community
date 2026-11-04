@@ -14,7 +14,6 @@ not a claim that every supplied artifact is covered by AGPL.
 | Cellpose stock/adapted weights | Upstream author clarification in issue 192 applies BSD3 to the pretrained files. The pinned v3.1.1.3 README also flags non-commercial training data; the upstream author describes possible inherited data restrictions as a gray zone. Local adaptation distribution is authorized by the maintainer. See `docs/MODEL_LICENSE_REVIEW.md` and the model BSD notice. |
 | TRUEFAD converted weights | The supplied model RDF declares MIT. The author repository's macros use GPLv3; ScieFig does not claim those macros are MIT. Conversion metadata, the original author list, and the model MIT notice are preserved with the converted weights. |
 | Python | PSF terms; retain the Python license in binary distributions. |
-| imagecodecs IMCD / LZW support | BSD-3-Clause, Christoph Gohlke; the pinned distribution notice is in `LICENSES/imagecodecs-BSD-3-Clause.txt`. |
 | NumPy, SciPy, pandas, scikit-image, scikit-learn, matplotlib, statsmodels, Pillow, openpyxl, fontTools and image readers | Retain each pinned distribution's actual license and notice material. Do not substitute this inventory for their license texts. |
 | Tesseract and traineddata | Preserve the supplied OCR runtime and traineddata notices; Tesseract is Apache-2.0. |
 | Lucide / Feather-derived SVG icons | Preserve `LICENSES/Lucide-LICENSE.txt`, including the upstream ISC/MIT attributions. Project branding does not replace these notices. |

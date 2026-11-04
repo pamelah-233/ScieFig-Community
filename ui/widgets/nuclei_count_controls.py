@@ -49,11 +49,6 @@ class NucleiCountControls(QWidget):
         bind_i18n(self.cellpose_input,'nuclei_local_contrast_hint','toolTip')
         if module=='fluoro':form.addRow(self.cellpose_input)
         else:self.cellpose_input.hide()
-        self.weak_recovery=bind_i18n(QCheckBox(),'nuclei_weak_recovery')
-        bind_i18n(self.weak_recovery,'nuclei_weak_recovery_hint','toolTip')
-        if module=='fluoro':form.addRow(self.weak_recovery)
-        else:self.weak_recovery.hide()
-        self.weak_recovery.toggled.connect(self._sync_method)
         self.method.currentIndexChanged.connect(self._sync_method)
         self.diameter=QDoubleSpinBox();self.diameter.setRange(2,500);self.diameter.setValue(17);self.diameter.setSuffix(' px')
         form.addRow(bind_i18n(QLabel(),'nuclei_diameter'),self.diameter)
@@ -104,9 +99,7 @@ class NucleiCountControls(QWidget):
     def _sync_method(self):
         method=self.method.currentData()
         self.model_hint.refresh()
-        recovery=self.module=='fluoro' and method=='cellpose_nuclei' and self.weak_recovery.isChecked()
-        self.weak_recovery.setVisible(self.module=='fluoro' and method=='cellpose_nuclei')
-        self.cellpose_input.setEnabled(not recovery and method in ('cellpose_nuclei','cellpose_cyto3','cellpose_cyto3_dapi_reviewed_v1'))
+        self.cellpose_input.setEnabled(method in ('cellpose_nuclei','cellpose_cyto3','cellpose_cyto3_dapi_reviewed_v1'))
         hint={'cellpose_cyto3_dapi_reviewed_v1':'nuclei_cyto3_reviewed_hint','cellpose_cyto3_he_pale_v1':'nuclei_he_pale_hint',
               'cellpose_cyto3':'nuclei_cyto3_hint','cellpose_nuclei':'nuclei_cellpose_hint','watershed':'nuclei_watershed_hint',
               'he_round':'nuclei_he_round_hint','he_refined':'nuclei_he_refined_hint'}.get(method)
@@ -126,8 +119,6 @@ class NucleiCountControls(QWidget):
         if self.module=='fluoro':result['object_kind']=self.object_kind.currentData()
         if self.module=='fluoro' and self.method.currentData() in ('cellpose_nuclei','cellpose_cyto3','cellpose_cyto3_dapi_reviewed_v1'):
             result['cellpose_input']=('tile_normalization' if self.method.currentData().startswith('cellpose_cyto3') else 'local_contrast') if self.cellpose_input.isChecked() else 'raw'
-            if self.method.currentData()=='cellpose_nuclei' and self.weak_recovery.isChecked():
-                result.update(cellpose_input='raw',weak_recovery=True)
         if self.module=='brightfield' and self.method.currentData()=='cellpose_cyto3':
             result['cellpose_input']='tile_normalization'
         if self._he_pale_settings is not None and self.method.currentData()=='cellpose_cyto3_he_pale_v1':
@@ -163,7 +154,6 @@ class NucleiCountControls(QWidget):
         self._he_settings_method=params.get('method')
         self._sensitivity=params.get('sensitivity',1.)
         self.cellpose_input.setChecked(params.get('cellpose_input','raw') in ('local_contrast','tile_normalization'))
-        self.weak_recovery.setChecked(bool(params.get('weak_recovery',False)))
         signal=params.get('signal_classification')
         self.classify_signal.setChecked(bool(signal))
         if signal:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from core.constants import WB_STEP_DENSITY
-from core.densitometry import wb_measurement_strips
 
 from pathlib import Path
 from io import BytesIO
@@ -655,7 +654,6 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
         self._stats_group: WBItemGroup | None = None
         self._strip_display_rects: list[dict] = []
         self._density_overlay_result: dict | None = None
-        self._density_value_key = 'bg_subtracted'
         self._density_overlay_items: list[QGraphicsItem] = []
         self._group_attached_items: dict[WBItemGroup, list[QGraphicsItem]] = {}
         self._attached_item_groups: dict[QGraphicsItem, WBItemGroup] = {}
@@ -843,9 +841,8 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
         self.scene.clearSelection();item.setSelected(True)
         return item
 
-    def set_density_overlay(self, densitometry_result: dict | None, *, value_key: str | None = None) -> None:
+    def set_density_overlay(self, densitometry_result: dict | None) -> None:
         self._density_overlay_result = densitometry_result
-        if value_key is not None: self._density_value_key = value_key
         self._clear_density_overlay()
         self._draw_density_overlay()
 
@@ -861,7 +858,6 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
     def _draw_density_overlay(self) -> None:
         if self._density_overlay_result is None or self._group is None:
             return
-        if int(self.panel.data.get('wb_active_step', 0)) != WB_STEP_DENSITY: return
         if self._density_overlay_items:
             return
         by_strip_id = {str(item.get("strip_id", "")): item for item in self._density_overlay_result.get("measurements", [])}
@@ -870,14 +866,13 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
             if measurement is None:
                 continue
             display = QRectF(entry["display_rect"])
-            scale = float(entry.get('display_scale', 1.))
             for lane in measurement.get("lanes", []):
                 roi = dict(lane.get("roi", {}))
                 rect = QRectF(
-                    display.x() + float(roi.get("x", 0))*scale,
-                    display.y() + float(roi.get("y", 0))*scale,
-                    float(roi.get("w", 1))*scale,
-                    float(roi.get("h", display.height()))*scale,
+                    display.x() + float(roi.get("x", 0)),
+                    display.y() + float(roi.get("y", 0)),
+                    float(roi.get("w", 1)),
+                    float(roi.get("h", display.height())),
                 )
                 rect_item = QGraphicsRectItem(rect, self._group)
                 rect_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -887,17 +882,16 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
                 self._group.addToGroup(rect_item)
                 self._density_overlay_items.append(rect_item)
 
-                fold = lane.get(self._density_value_key)
+                fold = lane.get("fold")
                 text_value = "N/A"
                 if isinstance(fold, (int, float)) and fold == fold:
-                    text_value = f"{float(fold):,.1f}" if self._density_value_key == 'bg_subtracted' else f"{float(fold):.2f}"
+                    text_value = f"{float(fold):.2f}"
                 flags = list(lane.get("qc_flags", []))
                 text = QGraphicsTextItem(text_value, self._group)
                 text.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-                text.setToolTip(f"{tr('wb_density_absolute')}: {lane.get('bg_subtracted')}\n{tr('wb_density_normalized')}: {lane.get('fold')}\n"+", ".join(str(flag) for flag in flags))
-                text.setData(0, 'wb_density_value'); text.setData(1, lane.get(self._density_value_key))
-                text.setDefaultTextColor(QColor("#ad6800" if flags else "#1f2937"))
-                text.setFont(QFont("Arial", 9))
+                text.setToolTip(", ".join(str(flag) for flag in flags))
+                text.setDefaultTextColor(QColor("#E8A040" if flags else "#FFFFFF"))
+                text.setFont(QFont("Arial", 7))
                 text.setZValue(121)
                 text.setPos(rect.center().x() - text.boundingRect().width() / 2, rect.top() - text.boundingRect().height() - 2)
                 self._group.addToGroup(text)
@@ -972,9 +966,6 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
         return [float(index + offset_x) for index in sorted(selected)]
 
     def _render_editor(self) -> None:
-        if self.panel is not None and self.panel.data.get('wb_crop_preview', int(self.panel.data.get('wb_active_step', 0)) >= 2):
-            self._render_strip_stack_editor()
-            return
         if self.panel is not None and self.panel.data.get("band_strips") and not self.panel.data.get("crops"):
             if int(self.panel.data.get("wb_active_step", 0)) >= 3:
                 self._render_strip_stack_editor()
@@ -1118,14 +1109,11 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
         self.scene.addItem(self._group)
         y = 0.0
         max_width = 1
-        strips = wb_measurement_strips(self.panel.data)
-        widths = []
-        for strip in strips:
-            raw = QImage(str(strip.get('image_path', '')))
-            roi = strip.get('crop_roi', {})
-            widths.append(self._transform_cropped_strip(raw.copy(int(roi.get('x',0)),int(roi.get('y',0)),int(roi.get('w',raw.width())),int(roi.get('h',raw.height()))),strip.get('adjustments', {})).width())
-        aligned_width = max(widths, default=1)
-        gap = 40 if int(self.panel.data.get('wb_active_step', 0)) == WB_STEP_DENSITY else 18
+        strips = list(self.panel.data.get("band_strips", []))
+        placed_ids = list(self.panel.data.get("placed_strip_ids", []))
+        if placed_ids:
+            by_id = {str(strip.get("strip_id")): strip for strip in strips}
+            strips = [by_id[strip_id] for strip_id in placed_ids if strip_id in by_id]
         for index, strip in enumerate(strips):
             image = self._source_display_image_for_path(strip.get("image_path"), adjustments=strip.get("adjustments"))
             if image.isNull():
@@ -1134,33 +1122,23 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
             image = image.copy(int(roi.get("x", 0)), int(roi.get("y", 0)), int(roi.get("w", image.width())), int(roi.get("h", image.height())))
             image = self._transform_cropped_strip(image, strip.get("adjustments", {}))
             pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(image))
-            scale = aligned_width/max(1,image.width()); pixmap_item.setScale(scale)
-            pixmap_item.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
             pixmap_item.setPos(0, y)
             pixmap_item.setZValue(0)
             self._group.addToGroup(pixmap_item)
             self._strip_display_rects.append(
                 {
-                    "index": next((i for i,s in enumerate(self.panel.data.get('band_strips', [])) if s['strip_id'] == strip['strip_id']), index),
+                    "index": index,
                     "strip_id": str(strip.get("strip_id", f"strip_{index + 1}")),
-                    "display_rect": QRectF(0, y, aligned_width, image.height()*scale),
-                    "display_scale": scale,
+                    "display_rect": QRectF(0, y, image.width(), image.height()),
                     "source_roi": dict(roi),
                 }
             )
             label = QGraphicsTextItem(str(strip.get("protein_name", strip.get("original_source", ""))))
             label.setDefaultTextColor(QColor("#111111"))
-            label.setPos(-label.boundingRect().width() - 12, y + image.height()*scale / 2 - label.boundingRect().height() / 2)
+            label.setPos(-label.boundingRect().width() - 12, y + image.height() / 2 - label.boundingRect().height() / 2)
             self._group.addToGroup(label)
-            y += image.height()*scale + gap
-            max_width = max(max_width, aligned_width)
-        annotations = self.panel.data.get('annotations', {})
-        labels = annotations.get('lane_labels', [])
-        anchors = annotations.get('lane_anchors', [])
-        for i, title in enumerate(labels):
-            x = anchors[i]*aligned_width/float(annotations.get('lane_anchor_width') or aligned_width) if i < len(anchors) else (i+.5)*aligned_width/max(1,len(labels))
-            label = QGraphicsTextItem(str(title)); label.setDefaultTextColor(QColor('#111111'))
-            label.setPos(x-label.boundingRect().width()/2, -54 if gap == 40 else -28); self._group.addToGroup(label)
+            y += image.height() + 8
+            max_width = max(max_width, image.width())
         drop_rect = QGraphicsRectItem(QRectF(0, y, max(max_width, 220), 52))
         drop_rect.setPen(QPen(QColor("#9AA3AF"), 1.0, Qt.PenStyle.DashLine))
         drop_rect.setZValue(10)
@@ -1500,16 +1478,6 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
     def _analysis_image_with_offset(self) -> tuple[QImage, int]:
         if self.panel is None:
             return QImage(), 0
-        if self.panel.data.get('wb_crop_preview'):
-            strips = wb_measurement_strips(self.panel.data)
-            if strips:
-                strip = strips[0]; image = self._source_display_image_for_path(strip['image_path'], adjustments=strip.get('adjustments'))
-                roi = strip.get('crop_roi', {})
-                image = self._transform_cropped_strip(image.copy(int(roi.get('x',0)),int(roi.get('y',0)),int(roi.get('w',image.width())),int(roi.get('h',image.height()))),strip.get('adjustments', {}))
-                if self._strip_display_rects:
-                    width = round(max(r['display_rect'].width() for r in self._strip_display_rects))
-                    image = image.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
-                return image, 0
         source = self._source_display_image(self.panel)
         crops = self.panel.data.get("crops", [])
         if not crops:

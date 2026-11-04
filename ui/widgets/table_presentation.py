@@ -51,9 +51,6 @@ class _TablePresentation(QObject):
 
     def size_columns(self):
         table = self.table
-        model = table.model()
-        if model is None:
-            return
         if table.property('workflowGroupTable') or table.objectName() == 'WorkflowExportTable':
             return
         header = table.horizontalHeader()
@@ -61,34 +58,33 @@ class _TablePresentation(QObject):
         header.setMinimumSectionSize(72)
         # Keep compact three-column forms proportional. Wider result tables
         # retain readable widths instead of compressing into a narrow sidebar.
-        columns = model.columnCount()
-        compact = columns <= 3 and all(
+        compact = table.columnCount() <= 3 and all(
             header.sectionResizeMode(col) == QHeaderView.ResizeMode.Stretch
-            for col in range(columns))
+            for col in range(table.columnCount()))
         if compact:
             return
         was_stretched = header.stretchLastSection()
         header.setStretchLastSection(False)
-        for col in range(columns):
+        for col in range(table.columnCount()):
             mode = header.sectionResizeMode(col)
             if mode == QHeaderView.ResizeMode.Fixed:
                 continue
-            label = str(model.headerData(col, Qt.Orientation.Horizontal) or '')
+            label = str(table.model().headerData(col, Qt.Orientation.Horizontal) or '')
             readable = max(96, min(240, header.fontMetrics().horizontalAdvance(label) + 24))
             if not self.sampled:
                 # Only the first small data batch informs initial widths. A
                 # large import never triggers a full-table contents scan.
-                for row in range(min(24, model.rowCount())):
-                    value = str(model.index(row, col).data() or '')
+                for row in range(min(24, table.model().rowCount())):
+                    value = str(table.model().index(row, col).data() or '')
                     readable = max(readable, min(220, table.fontMetrics().horizontalAdvance(value[:256]) + 20))
             width = table.columnWidth(col) if mode == QHeaderView.ResizeMode.Interactive else 0
-            if was_stretched and col == columns - 1:
+            if was_stretched and col == table.columnCount() - 1:
                 width = min(width, 240)
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
             table.setColumnWidth(col, max(width, readable))
         # Qt retains a stretched last section's expanded width after a window
         # shrinks. Stable interactive widths also let users resize every column.
-        self.sampled = model.rowCount() > 0
+        self.sampled = table.model().rowCount() > 0
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.ToolTip:
@@ -114,8 +110,6 @@ class _TablePresentation(QObject):
 
 
 def readable_table(table):
-    if table.model() is None:
-        return
     if hasattr(table, '_readable_presentation'):
         table._readable_presentation.schedule()
         return
