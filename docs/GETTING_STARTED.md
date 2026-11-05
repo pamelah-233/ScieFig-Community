@@ -1,12 +1,19 @@
-# macOS 1.2.2 安装 / Installation
+# ScieFig 使用说明 / Getting started
 
-Mac 安装版不需要另装 Python、机器码或激活程序。[下载 macOS 1.2.2](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.2)。PKG 用于标准安装，DMG 用于替换已有安装；支持 Apple Silicon/macOS 14+。外接盘已有 ScieFig 时在原位置替换以避免重复图标。签名／系统安全提示及详细修复见 [macOS 说明](MACOS_1.2.2.md)。Mac 源码及 worker 构建均使用 Python 3.12。
+## 下载与安装 / Download and install
 
-# ScieFig community source: getting started
+**当前正式版 / Current release: [ScieFig 1.2.3](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.3)**
 
-## 中文
+- **Windows x64** — [完整安装包 / Full installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_Setup.exe) · [CPU 基础包 / CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_CPU_Setup.exe) · [纯英文 CPU 包 / English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_English_CPU_Setup.exe)。完整包已含 NVIDIA GPU 运行库。CPU 包可从发布页获取兼容的 GPU 补充包。 / The full installer includes NVIDIA GPU support. The release page links to the compatible GPU component for the CPU installers.
+- **macOS 14+ · Apple Silicon** — [下载 1.2.3 DMG / Download the 1.2.3 DMG](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_macOS_arm64.dmg)。打开 DMG，将 ScieFig 拖入「应用程序」。如果已有安装，在原位置替换。 / Open the DMG and drag ScieFig into Applications. Replace any existing copy in place.
 
-这是基于 1.2.2 的社区源码准备版。源码启动无需机器码；本仓库发布的社区版安装包无需激活；旧私有版安装包不是社区版。
+安装包无需另装 Python 或激活。 / The installers require neither a separate Python installation nor activation.
+
+## 源码运行 / Running from source
+
+### 中文
+
+下面是默认分支的源码运行说明。Windows 与 macOS 的 1.2.3 打包源码请查阅发布页中各平台的源码入口。
 
 1. 安装 Python 3.14，创建虚拟环境。
 2. 安装依赖：`python -m pip install -r requirements.txt`。
@@ -39,10 +46,10 @@ TRUEFAD 权重已经随公开源码候选提供。原始两份权重使用固定
 真实数据回归为显式选择：`SCIEFIG_TEST_IHC_TIFF` 和 `SCIEFIG_TEST_OVERLAY`
 可指向自己有权使用的本地文件；不设置时相关真实数据测试跳过。
 
-## English
+### English
 
-This is community-source preparation based on 1.2.2, with no device activation
-in the source entrypoint. Historical installers have not been repackaged.
+These instructions apply to the default branch. See the release page for the
+Windows and macOS 1.2.3 build source references.
 
 - Create a Python 3.14 virtual environment and install `requirements.txt`.
 - Run `python main.py`; use the labelled synthetic qPCR CSV for a first run.
