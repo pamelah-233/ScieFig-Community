@@ -1,0 +1,76 @@
+name: Publish verified ScieFig 1.2.4 installers
+
+on:
+  push:
+    branches: [publish-1.2.4]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-sciefig-1.2.4
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MAC_RUN: '42439417133'
+      MAC_SHA: 'a1b12f210979b2d7f075bafb567c60cffaaa6a4d'
+      WIN_RUN: '42439418397'
+      WIN_SHA: '6238fb4ba2a12ea80c9810715bc2f0deee35da3b'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the build runs and stage all four installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_run() {
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1" |
+              jq -e --arg sha "$2" --arg branch "$3" --arg path "$4" \
+                '.head_sha == $sha and .head_branch == $branch and .path == $path and .conclusion == "success"' >/dev/null
+          }
+          check_run "$MAC_RUN" "$MAC_SHA" macos-1.2.4 .github/workflows/build-macos-1.2.4.yml
+          check_run "$WIN_RUN" "$WIN_SHA" windows-1.2.4 .github/workflows/build-windows-1.2.4.yml
+          gh run download "$MAC_RUN" --name ScieFig-1.2.4-macOS-arm64 --dir staged/macos
+          gh run download "$WIN_RUN" --name ScieFig-1.2.4-Windows-installers --dir staged/windows
+          mkdir packages
+          mv staged/macos/ScieFig_1.2.4_macOS_arm64.dmg packages/
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          staged = Path('staged/windows')
+          manifest = json.loads((staged / 'windows-candidate.json').read_text(encoding='utf-8-sig'))
+          assert (manifest['version'], manifest['commit'], manifest['run'], manifest['upgrade']) == (
+              '1.2.4', os.environ['WIN_SHA'], os.environ['WIN_RUN'], 'passed')
+          sizes = {item['Name']: item['Length'] for item in manifest['packages']}
+          for variant in ('', '_CPU', '_English_CPU'):
+              source = staged / f'ScieFig_1.2.4{variant}_Setup.exe'
+              assert source.stat().st_size == sizes[source.name]
+              source.rename(Path('packages') / f'ScieFig_1.2.4_Windows{variant}_Setup.exe')
+          assert len(list(Path('packages').iterdir())) == 4
+          PY
+      - name: Upload to a draft, verify the four assets, then publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=community-v1.2.4
+          gh release create "$tag" --draft --title 'ScieFig 1.2.4' --target "$MAC_SHA" \
+            --notes-file docs/RELEASE_BODY_1.2.4.md
+          gh release upload "$tag" packages/*
+          gh release view "$tag" --json isDraft,assets > uploaded.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('uploaded.json').read_text())
+          assert release['isDraft']
+          expected = {p.name: p.stat().st_size for p in Path('packages').iterdir()}
+          observed = {a['name']: a['size'] for a in release['assets'] if a['state'].lower() == 'uploaded'}
+          assert len(expected) == 4 and all(size > 0 for size in expected.values())
+          assert observed == expected, (observed, expected)
+          PY
+          gh release edit "$tag" --draft=false --latest
+          gh release view "$tag" --json isDraft,isPrerelease,tagName,url
