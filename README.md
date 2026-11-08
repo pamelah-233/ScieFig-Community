@@ -5,28 +5,33 @@ Scientific data and image analysis, plotting and figure assembly.
 
 ## 下载 / Download
 
-### Windows 1.2.3
+### Windows 1.2.4
 
 | 安装包 / Installer | 下载 / Download |
 | --- | --- |
-| 完整离线包，包含 CPU / NVIDIA GPU 运行库 / Full offline package | [Windows 完整安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_Setup.exe) |
-| CPU 基础包 / CPU package | [Windows CPU 安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_CPU_Setup.exe) |
-| 纯英文 CPU 包 / English-only CPU package | [Windows English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_Windows_English_CPU_Setup.exe) |
+| 完整离线包，包含 CPU / NVIDIA GPU 运行库 / Full offline package | [Windows 完整安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_Setup.exe) |
+| CPU 基础包 / CPU package | [Windows CPU 安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_CPU_Setup.exe) |
+| 纯英文 CPU 包 / English-only CPU package | [Windows English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_English_CPU_Setup.exe) |
 | NVIDIA GPU 补充包 / GPU component | [现有 GPU 补充包 / Existing GPU component](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_GPU_cellpose3_torch212_win64_v1.zip) |
 
 CPU 基础包和纯英文 CPU 包可加装上方 NVIDIA GPU 补充包。<br>
 The CPU and English CPU packages support the existing NVIDIA GPU component.
 
-### macOS 1.2.3
+### macOS 1.2.4
 
-**[macOS DMG · Apple Silicon](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.3/ScieFig_1.2.3_macOS_arm64.dmg)**
+**[macOS DMG · Apple Silicon](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_macOS_arm64.dmg)**
 
 Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。<br>
 The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
 
-1.2.3 打包源码 / Build source: [Windows](https://github.com/pamelah-233/ScieFig-Community/tree/windows-v1.2.3) · [macOS](https://github.com/pamelah-233/ScieFig-Community/tree/macos-v1.2.3)。源码快照中的旧下载链接仅作历史记录，请使用上方安装包链接。 / Use the installer links above; source snapshots can contain historical download links.
+1.2.4 打包源码 / Build source: [Windows](https://github.com/pamelah-233/ScieFig-Community/tree/6238fb4ba2a12ea80c9810715bc2f0deee35da3b) · [macOS](https://github.com/pamelah-233/ScieFig-Community/tree/a1b12f210979b2d7f075bafb567c60cffaaa6a4d)。源码快照中的旧下载链接仅作历史记录，请使用上方安装包链接。 / Use the installer links above; source snapshots can contain historical download links.
 
-[1.2.3 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.3) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
+[1.2.4 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.4) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
+
+## 1.2.4 更新 / What's new in 1.2.4
+
+- **ND2 导入修复 / ND2 import fix**：修复部分 ND2 导入后卡住或崩溃，Windows 安装包补齐旧版 ND2 所需的 JPEG 2000 解码器。 / Fixed freezes and crashes when opening some ND2 images; Windows installers now include the legacy JPEG 2000 decoder.
+- **软件更新提示 / Update notice**：启动后在后台检查正式版，有较新的本平台安装包时显示下载入口。 / ScieFig checks for stable releases after startup and shows a link when a newer installer is available for your platform.
 
 ## 1.2.3 重要更新：多标记表型与细胞邻域
 ### New in 1.2.3: multi-marker phenotypes and cell neighborhoods
