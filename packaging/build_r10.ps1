@@ -133,6 +133,7 @@ $pyinstallerArgs = @(
     'tifffile'
     '--hidden-import'
     'imagecodecs._imcd'
+    '--hidden-import'
     'imagecodecs._jpeg2k'
     '--hidden-import'
     'imagecodecs._shared_cython'
