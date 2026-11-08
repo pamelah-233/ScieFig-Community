@@ -85,7 +85,7 @@ jobs:
         run: |
           .venv/Scripts/python.exe -c "from core.constants import SOFTWARE_VERSION; assert SOFTWARE_VERSION == '1.2.3'"
           if ($LASTEXITCODE) { throw 'Formal version mismatch' }
-          .venv/Scripts/python.exe -m pytest -x -q -p no:faulthandler tests/test_packaging_r095.py tests/test_installer_files.py tests/test_english_package.py tests/test_public_source.py tests/test_multiplex_spatial.py tests/test_spatial_results_model.py
+          .venv/Scripts/python.exe -m pytest -x -q -p no:faulthandler tests/test_packaging_r095.py tests/test_installer_files.py tests/test_english_package.py tests/test_public_source.py tests/test_multiplex_spatial.py tests/test_spatial_results_model.py tests/test_io_engine.py
           if ($LASTEXITCODE) { throw 'Source checks failed' }
       - name: Freeze the formal Windows application
         run: |
