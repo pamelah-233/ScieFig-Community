@@ -15,7 +15,7 @@
 [Setup]
 AppId={{0C73A76E-0E1D-49D2-A2D1-9809DE8926BE}
 AppName=ScieFig
-AppVersion=1.2.3
+AppVersion=1.2.4
 AppPublisher=ScieFig
 LicenseFile=..\LICENSE
 DefaultDirName={autopf}\ScieFig
@@ -24,7 +24,7 @@ DisableProgramGroupPage=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 OutputDir={#OutputDir}
-OutputBaseFilename=ScieFig_1.2.3_Setup
+OutputBaseFilename=ScieFig_1.2.4_Setup
 Compression=lzma2/ultra64
 LZMANumBlockThreads=2
 LZMAUseSeparateProcess=yes

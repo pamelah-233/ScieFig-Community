@@ -52,3 +52,28 @@ def test_welcome_is_shown_on_each_launch_without_opening_browser(qt_application,
         assert urls == []
     finally:
         parent.close()
+
+
+def test_update_requires_a_newer_stable_release_with_a_platform_installer():
+    def release(version, *names, draft=False, prerelease=False):
+        return {
+            'tag_name': f'community-v{version}', 'draft': draft, 'prerelease': prerelease,
+            'assets': [{'name': f'ScieFig_{version}_{name}', 'state': 'uploaded'} for name in names],
+        }
+
+    releases = [
+        release('1.2.20', 'macOS_arm64.dmg', prerelease=True),
+        release('1.2.19', 'Windows_Setup.exe', draft=True),
+        release('1.2.18'),
+        release('1.2.9', 'Windows_Setup.exe'),
+        release('1.2.10', 'macOS_arm64.dmg'),
+        release('1.2.11', 'Windows_CPU_Setup.exe'),
+        release('1.2.3', 'macOS_arm64.dmg', 'Windows_CPU_Setup.exe'),
+    ]
+    for platform, version in (('darwin', '1.2.10'), ('win32', '1.2.11')):
+        assert welcome.newer_platform_release(releases, '1.2.4', platform) == (
+            version, f'{welcome.PROJECT_URL}/releases/tag/community-v{version}',
+        )
+        assert welcome.newer_platform_release(releases, version, platform) is None
+    assert welcome.newer_platform_release({}, '1.2.4', 'darwin') is None
+    assert welcome.newer_platform_release(releases, '1.2.4', 'linux') is None
