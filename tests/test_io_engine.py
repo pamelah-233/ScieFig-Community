@@ -367,6 +367,8 @@ def test_io_engine_nd2_prefers_read_frame_for_first_plane(
 ) -> None:
     path = tmp_path / "first-plane.nd2"
     path.write_bytes(b"fake-nd2-first-plane")
+    expected = (frame[np.newaxis, :, :] if frame.ndim == 2 else frame).copy()
+    frame = frame.copy()
     read_frame_calls: list[int] = []
     normalize_axes: list[str] = []
 
@@ -380,7 +382,8 @@ def test_io_engine_nd2_prefers_read_frame_for_first_plane(
             return self
 
         def __exit__(self, exc_type, exc, tb) -> None:
-            return None
+            # Real ND2 readers can invalidate their memory mapping here.
+            frame.fill(0)
 
         def read_frame(self, index: int) -> np.ndarray:
             read_frame_calls.append(index)
@@ -409,7 +412,6 @@ def test_io_engine_nd2_prefers_read_frame_for_first_plane(
 
     result = io_engine.read_microscopy_image(path)
 
-    expected = frame[np.newaxis, :, :] if frame.ndim == 2 else frame
     assert read_frame_calls == [0]
     assert normalize_axes == [expected_axes]
     assert np.array_equal(result.analysis_data, expected)
