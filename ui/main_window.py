@@ -1767,6 +1767,8 @@ class MainWindow(QMainWindow):
         status_uses_default_copy = self.status_label.text() == previous_default_status
         set_language(language)
         self._retranslate_menu()
+        if getattr(self, "project_welcome_dialog", None) is not None:
+            self.project_welcome_dialog.retranslate_update()
         retranslate_bound_widgets(self)
         self.data_panel.retranslate()
         self._refresh_result_freshness_status()
