@@ -13,7 +13,6 @@ from ui.widgets.canvas_graphics_adapter import (
     canvas_content_bounds,
     canvas_hint_frame,
     cancel_canvas_pan,
-    ensure_view_pan_room,
     event_viewport_point,
     keep_scene_point_at_view_pos,
     sync_canvas_hints,
@@ -30,6 +29,17 @@ from ui.widgets.canvas_zoom import (
 )
 
 
+def scroll_canvas_by(area, dx: int, dy: int) -> None:
+    horizontal, vertical = area.horizontalScrollBar(), area.verticalScrollBar()
+    horizontal.setValue(horizontal.value() - dx)
+    vertical.setValue(vertical.value() - dy)
+
+
+def clamp_canvas_offset(offset: float, content_size: float, viewport_size: float) -> float:
+    limit = max(0.0, (content_size - viewport_size) / 2)
+    return max(-limit, min(limit, offset))
+
+
 class CanvasViewportBackend(Protocol):
     def host_widget(self) -> QWidget: ...
     def viewport_center(self) -> QPoint: ...
@@ -38,15 +48,19 @@ class CanvasViewportBackend(Protocol):
     def apply_fit(self, margin_px: int) -> float: ...
     def restore_scale(self, factor: float) -> float: ...
     def keep_anchor(self, captured) -> None: ...
-    def prepare_pan(self) -> None: ...
     def pan_by(self, dx: int, dy: int) -> None: ...
 
 
 class GraphicsViewBackend:
-    def __init__(self, view: QGraphicsView, content_rect_provider: Callable[[], QRectF], *, enable_view_pan_room: bool = True, content_frame: bool = False) -> None:
+    def __init__(
+        self,
+        view: QGraphicsView,
+        content_rect_provider: Callable[[], QRectF],
+        *,
+        content_frame: bool = False,
+    ) -> None:
         self.view = view
         self._content_rect_provider = content_rect_provider
-        self.enable_view_pan_room = bool(enable_view_pan_room)
         self.content_frame = content_frame
         self._fixed_content_rect: QRectF | None = None
 
@@ -82,15 +96,23 @@ class GraphicsViewBackend:
         return point, self.view.mapToScene(point)
 
     def apply_scale(self, factor: float) -> float:
+        self.view.setSceneRect(self.navigation_rect())
         return zoom_graphics_view_by(self.view, factor)
+
+    def navigation_rect(self) -> QRectF:
+        # Preview paper can include blank margins outside the rendered items.
+        if self.content_frame:
+            bounds = canvas_content_bounds(self.view.scene())
+            if not bounds.isEmpty():
+                return bounds
+        return self.content_rect()
 
     def apply_fit(self, margin_px: int) -> float:
         rect = self.content_rect()
+        self.view.setSceneRect(rect)
         if rect.isNull() or rect.width() <= 0 or rect.height() <= 0:
             return graphics_view_zoom_factor(self.view)
         zoom = fit_graphics_view_to_rect(self.view, rect, margin_px=margin_px)
-        if self.enable_view_pan_room:
-            ensure_view_pan_room(self.view, rect)
         self.view.centerOn(rect.center())
         sync_canvas_hints(self.view)
         return zoom
@@ -99,8 +121,7 @@ class GraphicsViewBackend:
         viewport = self.view.viewport()
         center = self.view.mapToScene(viewport.rect().center()) if viewport is not None else None
         zoom = set_graphics_view_zoom(self.view, factor)
-        if self.enable_view_pan_room:
-            ensure_view_pan_room(self.view, self.content_rect())
+        self.view.setSceneRect(self.navigation_rect())
         if center is not None:
             self.view.centerOn(center)
         sync_canvas_hints(self.view)
@@ -108,20 +129,11 @@ class GraphicsViewBackend:
 
     def keep_anchor(self, captured) -> None:
         point, scene_point = captured
-        if self.enable_view_pan_room:
-            ensure_view_pan_room(self.view, self.content_rect())
         keep_scene_point_at_view_pos(self.view, scene_point, point)
         sync_canvas_hints(self.view)
 
-    def prepare_pan(self) -> None:
-        if self.enable_view_pan_room:
-            ensure_view_pan_room(self.view, self.content_rect())
-
     def pan_by(self, dx: int, dy: int) -> None:
-        if dx:
-            self.view.horizontalScrollBar().setValue(self.view.horizontalScrollBar().value() - dx)
-        if dy:
-            self.view.verticalScrollBar().setValue(self.view.verticalScrollBar().value() - dy)
+        scroll_canvas_by(self.view, dx, dy)
 
 
 class CanvasViewController(QObject):
@@ -207,13 +219,9 @@ class CanvasViewController(QObject):
     def zoom_out(self) -> None:
         self.zoom_by(1 / ZOOM_STEP)
 
-    def begin_pan(self) -> None:
-        self.fit_mode = False
-        self.backend.prepare_pan()
-
     def pan_by(self, dx: int, dy: int) -> None:
-        self.fit_mode = False
-        self.backend.pan_by(dx, dy)
+        if not self.fit_mode and (dx or dy):
+            self.backend.pan_by(dx, dy)
 
     def handle_wheel(self, event, anchor=None) -> bool:
         if not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
@@ -223,7 +231,6 @@ class CanvasViewController(QObject):
                 delta = QPoint(round(angle.x() / 2), round(angle.y() / 2))
             if delta.isNull():
                 return False
-            self.begin_pan()
             self.pan_by(delta.x(), delta.y())
             event.accept()
             return True
@@ -333,7 +340,6 @@ class CanvasNavigationFilter(QObject):
         if event.type() == QEvent.Type.MouseButtonPress and self.space and event.button() == Qt.MouseButton.LeftButton:
             self.panning = True
             self.last_pos = event.globalPosition().toPoint()
-            self._controller.begin_pan()
             watched.setCursor(Qt.CursorShape.ClosedHandCursor)
             return True
         if event.type() == QEvent.Type.MouseMove and self.panning:
@@ -429,12 +435,11 @@ def attach_scene_canvas_controller(
     after_view_change: Callable[..., None] | None = None,
     fit_delays: tuple[int, ...] = (0,),
     viewport_margin: int = FIT_VIEWPORT_MARGIN_PX,
-    enable_view_pan_room: bool = True,
     content_frame: bool = False,
     editable=False,
 ) -> CanvasViewController:
     configure_scene_view(view, owner=owner)
-    backend = GraphicsViewBackend(view, content_rect_provider, enable_view_pan_room=enable_view_pan_room, content_frame=content_frame)
+    backend = GraphicsViewBackend(view, content_rect_provider, content_frame=content_frame)
     controller = attach_canvas_controller(
         owner,
         backend,

@@ -912,6 +912,22 @@ def test_black_balance_can_apply_only_to_selected_split_channel(tmp_path) -> Non
     assert corrected[1, 8, 10] == 0
 
 
+def test_black_balance_for_selected_rgb_composite_uses_all_color_components(tmp_path) -> None:
+    app = QApplication.instance() or QApplication([])
+    path = tmp_path / 'composite.png'
+    source = QImage(32, 24, QImage.Format.Format_RGB888)
+    from PyQt6.QtGui import QColor
+    source.fill(QColor(10, 40, 80))
+    assert source.save(str(path))
+    panel = FluorescencePanel(panel_id='composite')
+    image = panel.import_image(path)
+    geometry = {'x': 0, 'y': 0, 'w': 3, 'h': 3, 'source_channel_index': 0}
+    correction = panel.set_black_balance_roi(image['uid'], geometry, scope='selected_channel')
+    assert correction['channel_backgrounds'] == {0: 10.0, 1: 40.0, 2: 80.0}
+    assert not panel.black_balanced_image_data(image['uid']).any()
+    app.processEvents()
+
+
 def test_black_balance_scope_control_drives_roi_tool_scope(tmp_path) -> None:
     app = QApplication.instance() or QApplication([])
     image_path = _write_measure_tiff(tmp_path / "scope_ui.tif")
@@ -930,6 +946,25 @@ def test_black_balance_scope_control_drives_roi_tool_scope(tmp_path) -> None:
     assert correction["scope"] == "selected_channel"
     assert correction["channel_backgrounds"] == {1: 40.0}
     assert "Selected channel" in workspace.black_balance_status_label.text()
+
+    workspace._set_view_mode("merge")
+    workspace.roi_channel_combo.setCurrentIndex(workspace.roi_channel_combo.findData(1))
+    workspace._add_drawn_roi("black_balance", {"x": 3, "y": 2, "w": 2, "h": 2})
+    assert image["background_correction"]["channel_backgrounds"] == {1: 250.0}
+    workspace.roi_channel_combo.setCurrentIndex(workspace.roi_channel_combo.findData(0))
+    workspace._add_drawn_roi("black_balance", {"x": 10, "y": 8, "w": 2, "h": 2})
+    correction = image["background_correction"]
+    assert correction["channel_backgrounds"] == {0: 10.0, 1: 250.0}
+    assert correction["channel_references"]["0"]["geometry"]["x"] == 10
+    assert correction["channel_references"]["1"]["geometry"]["x"] == 3
+
+    workspace._set_measure_mode("spot_count")
+    workspace.count_black_balance_scope_combo.setCurrentIndex(1)
+    for index in range(workspace.count_channel_list.count()):
+        workspace.count_channel_list.item(index).setSelected(True)
+    workspace._add_drawn_roi("black_balance", {"x": 10, "y": 8, "w": 2, "h": 2})
+    assert image["background_correction"] == correction
+    assert workspace.step_hint.text() == tr("black_balance_choose_channel")
     app.processEvents()
 
 

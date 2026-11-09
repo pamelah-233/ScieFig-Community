@@ -45,16 +45,21 @@ def test_sidebar_switches_share_fixed_anchors_and_reverse_icons(window):
     ):
         point = hide.mapTo(window, QPoint())
         width = panel.width()
+        workflow_width = shell._right_widget.width()
         assert hide.icon().cacheKey() != show.icon().cacheKey()
         collapse()
         QTest.qWait(55)
         assert 0 < panel.width() < width
+        if panel is shell.right_panel:
+            assert shell._right_widget.width() == workflow_width
         QTest.qWait(150)
         assert panel.width() == 0
         assert show.isVisible() and show.mapTo(window, QPoint()) == point
         restore()
         QTest.qWait(55)
         assert 0 < panel.width() < width
+        if panel is shell.right_panel:
+            assert shell._right_widget.width() == workflow_width
         collapse()  # Reverse an unfinished transition without losing the saved width.
         QTest.qWait(190)
         restore()

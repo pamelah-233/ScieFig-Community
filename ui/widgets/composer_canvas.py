@@ -548,9 +548,7 @@ class ComposerCanvas(SceneCanvasOwnerMixin, QWidget):
             self.view,
             content_rect_provider=self._fit_target_rect,
             zoom_controls=self.zoom_controls,
-            after_view_change=self._on_canvas_view_change,
             fit_delays=(0, 80),
-            enable_view_pan_room=False,
             editable=True,
         )
 
@@ -665,6 +663,7 @@ class ComposerCanvas(SceneCanvasOwnerMixin, QWidget):
     def place_panel(self, panel_uuid: str, scene_pos: QPointF | None = None, reset_existing: bool = False) -> None:
         if self.project is None:
             return
+        first_placement = not self._has_canvas_content()
         figure = self.current_figure()
         if reset_existing:
             self.layout_model.remove_panel(panel_uuid)
@@ -707,6 +706,8 @@ class ComposerCanvas(SceneCanvasOwnerMixin, QWidget):
         self._renumber_auto_labels()
         figure.append_audit("place_panel_reference", panel_uuid)
         self.reference_changed()
+        if first_placement:
+            self._view_controller.fit_mode = True
         self.render()
 
     def is_panel_placed(self, panel_uuid: str) -> bool:
@@ -1079,8 +1080,7 @@ class ComposerCanvas(SceneCanvasOwnerMixin, QWidget):
                     if annotation.annotation_uid in selected_uids:
                         item.setSelected(True)
 
-            preview_margin = max(240.0,self.view.width()/max(.1,self._zoom_factor))
-            self.scene.setSceneRect(self.paper_rect.adjusted(-preview_margin, -preview_margin, preview_margin, preview_margin))
+            self.scene.setSceneRect(self.paper_rect)
             self._apply_canvas_zoom()
         finally:
             self.updating_scene = False
@@ -1113,6 +1113,10 @@ class ComposerCanvas(SceneCanvasOwnerMixin, QWidget):
     def _fit_target_rect(self) -> QRectF:
         return QRectF(self.paper_rect)
 
+    def _has_canvas_content(self) -> bool:
+        return any(isinstance(item, (ComposerPanelItem, ComposerTextItem, ComposerShapeItem))
+                   for item in self.scene.items())
+
     def handle_first_view_paint(self) -> None:
         if not self._first_view_paint_pending:
             return
@@ -1127,36 +1131,6 @@ class ComposerCanvas(SceneCanvasOwnerMixin, QWidget):
 
     def schedule_recenter_after_layout(self) -> None:
         self._view_controller.schedule_fit()
-
-    def _on_canvas_view_change(self, *, fit: bool) -> None:
-        self._expand_preview_scene_rect()
-        if fit:
-            self._center_paper_in_view()
-
-    def _expand_preview_scene_rect(self) -> None:
-        margin = max(240.0, self.view.width() / max(0.1, self._zoom_factor))
-        expanded = self.paper_rect.adjusted(-margin, -margin, margin, margin)
-        current = QRectF(self.scene.sceneRect())
-        if (
-            abs(current.x() - expanded.x()) < 1.0
-            and abs(current.y() - expanded.y()) < 1.0
-            and abs(current.width() - expanded.width()) < 1.0
-            and abs(current.height() - expanded.height()) < 1.0
-        ):
-            return
-        self.scene.setSceneRect(expanded)
-
-    def _center_paper_in_view(self) -> None:
-        self.view.centerOn(self.paper_rect.center())
-        for _ in range(3):
-            mapped = self.view.mapFromScene(self.paper_rect).boundingRect()
-            visible = self._visible_viewport_rect()
-            dx = mapped.center().x() - visible.center().x()
-            dy = mapped.center().y() - visible.center().y()
-            if abs(dx) <= 1 and abs(dy) <= 1:
-                return
-            self.view.horizontalScrollBar().setValue(self.view.horizontalScrollBar().value() + int(round(dx)))
-            self.view.verticalScrollBar().setValue(self.view.verticalScrollBar().value() + int(round(dy)))
 
     def _visible_viewport_rect(self) -> QRect:
         viewport = self.view.viewport()

@@ -407,7 +407,7 @@ def test_async_import_rejects_stale_edit_or_project(monkeypatch, tmp_path, mutat
     _close_window(app, window)
 
 
-def test_async_import_survives_visible_module_switch_when_project_and_panel_are_unchanged(
+def test_async_import_survives_another_module_import(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -426,15 +426,16 @@ def test_async_import_survives_visible_module_switch_when_project_and_panel_are_
     window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
     window.set_module("ihc")
     panel = window._active_ihc_panel()
-    window._active_brightfield_panel()
+    brightfield = window._active_brightfield_panel()
     project = window.project
-    project_fingerprint = window._microscopy_import_project_fingerprint(project)
 
     window.import_ihc_images([str(image_path)])
     _wait_until(app, started.is_set)
     window.set_module("brightfield")
+    window.import_brightfield_images([str(image_path)])
+    _wait_for_import(app, window, "brightfield")
     assert window.project is project
-    assert window._microscopy_import_project_fingerprint(project) == project_fingerprint
+    assert len(brightfield.images()) == 1
     release.set()
     _wait_for_import(app, window, "ihc")
 
@@ -538,11 +539,13 @@ def test_fluoro_threshold_async_source_cache_miss_keeps_heartbeat_and_adopts_dec
     panel = window._active_fluoro_panel()
     record = panel.import_image(image_path)
     image_uid = str(record["uid"])
-    panel.remove_cached_image_data(image_uid)
-    window.fluoro_workspace.set_panel(panel)
     workspace = window.fluoro_workspace
+    workspace.set_panel(panel, refresh=True)
+    workspace.set_count_analysis_settings({"algorithm": "traditional"})
     workspace.threshold_method_combo.setCurrentText("manual")
     workspace.threshold_value_spin.setValue(1000.0)
+    assert workspace.apply_threshold_button.isEnabled()
+    panel.remove_cached_image_data(image_uid)
 
     gui_thread = int(QThread.currentThreadId())
     started = threading.Event()
@@ -604,6 +607,41 @@ def test_fluoro_threshold_async_source_cache_miss_keeps_heartbeat_and_adopts_dec
     assert panel.image_data(image_uid) is not None
     assert len(decode_threads) == 1
     sync_panel.dispose()
+    _close_window(app, window)
+
+
+def test_fluoro_async_calculation_survives_save_as(monkeypatch, tmp_path) -> None:
+    app = _app()
+    image_path = _uint16_multichannel_file(tmp_path / "threshold.ome.tif")
+    destination = tmp_path / "during-analysis.sfig"
+    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
+    window.set_module("fluoro")
+    panel = window._active_fluoro_panel()
+    record = panel.import_image(image_path)
+    workspace = window.fluoro_workspace
+    workspace.set_panel(panel, refresh=True)
+    workspace.set_count_analysis_settings({"algorithm": "traditional"})
+    started = threading.Event()
+    release = threading.Event()
+    original_apply = FluorescencePanel.apply_threshold
+
+    def slow_apply(self, *args, **kwargs):
+        started.set()
+        assert release.wait(10.0)
+        return original_apply(self, *args, **kwargs)
+
+    monkeypatch.setattr(FluorescencePanel, "apply_threshold", slow_apply)
+    monkeypatch.setattr(main_window_module.QFileDialog, "getSaveFileName", lambda *_args: (str(destination), ""))
+    workspace.apply_threshold_button.click()
+    try:
+        _wait_until(app, started.is_set)
+        assert window.save_project_as()
+        assert destination.is_file()
+        assert not panel.analysis.get("threshold_masks")
+    finally:
+        release.set()
+    _wait_for_fluoro_analysis(app, window, "threshold")
+    assert panel.analysis["threshold_masks"][f"{record['uid']}:0"]
     _close_window(app, window)
 
 
@@ -845,6 +883,8 @@ def test_fluoro_ai_count_sample_and_drawn_profile_all_run_off_gui_thread(monkeyp
     monkeypatch.setattr(FluorescenceWorkspace, "_count_review_image_for_panel", staticmethod(capture_review))
     monkeypatch.setattr(workspace, "_show_count_preview_dialog", lambda *_args, **_kwargs: None)
 
+    workspace.set_ai_analysis_settings({'backend': 'local_heuristic'})
+    workspace.set_count_analysis_settings({'algorithm': 'traditional'})
     workspace._run_ai_assisted()
     _wait_for_fluoro_analysis(app, window, "ai")
     workspace._count_spots()
@@ -882,12 +922,7 @@ def _apply_snapshot(live_panel: Any, result_panel: Any) -> None:
 def _ihc_controller(panel_ref: list[IHCPanel], service: AnalysisJobService, applied: list[Any], errors: list[Exception], notices: list[str]):
     return IHCAnalysisController(
         get_panel=lambda: panel_ref[0],
-        get_expert_settings=lambda: {},
-        get_assisted_settings=lambda: {},
-        get_foolproof_settings=lambda: {},
-        get_current_mode=lambda: "foolproof",
         get_overlay_opacity=lambda: 0.35,
-        get_current_task_type=lambda: "ihc_dab",
         get_examples_for_image=lambda _uid: [],
         clear_examples_for_image=lambda _uid: None,
         clear_example_click_mode=lambda: None,
@@ -917,11 +952,8 @@ def _brightfield_controller(
     return BrightfieldTraditionalAnalysisController(
         get_panel=lambda: panel_ref[0],
         cancel_preview_debounce=lambda: None,
-        get_current_mode=lambda: "foolproof",
         get_current_stain_type=lambda: "H&E",
-        get_expert_settings=lambda: {},
-        get_assisted_settings=lambda: {},
-        get_foolproof_settings=lambda: {},
+        get_settings=lambda: {},
         refresh_measurement_views=refresh,
         notify_user=lambda _title, message: notices.append(message),
         report_failure=lambda _title, _context, exc: errors.append(exc),
@@ -1175,15 +1207,32 @@ def test_mainwindow_brightfield_preview_payload_avoids_gui_reanalysis(monkeypatc
     class _Canvas:
         def __init__(self) -> None:
             self.displayed = None
+            self.reused_overlay = False
 
         def set_display_state(self, pixmap, **kwargs) -> None:
             self.displayed = (pixmap, kwargs)
+
+        def has_original_pixmap(self) -> bool:
+            return True
+
+        def has_overlay_pixmap(self) -> bool:
+            return self.displayed is not None
+
+        def set_roi_selection_enabled(self, _enabled) -> None:
+            pass
+
+        def set_roi_rect(self, _rect) -> None:
+            pass
+
+        def show_overlay_preview(self) -> None:
+            self.reused_overlay = True
 
     class _Workspace:
         current_step = 2
 
         def __init__(self) -> None:
             self.canvas = _Canvas()
+            self.white_balance = SimpleNamespace(sync=lambda: None)
 
     class _Host:
         def __init__(self) -> None:
@@ -1238,6 +1287,9 @@ def test_mainwindow_brightfield_preview_payload_avoids_gui_reanalysis(monkeypatc
     assert host.cell_table_updates == [None]
     assert host.cell_settings_updates == [{}]
 
+    MainWindow._refresh_brightfield_preview(host, panel, measurement_uuid=measurement["measurement_uuid"])
+    assert host.brightfield_workspace.canvas.reused_overlay
+
 
 def test_brightfield_completion_callback_uses_worker_overlay_without_gui_reanalysis(monkeypatch) -> None:
     app = _app()
@@ -1273,6 +1325,7 @@ def test_brightfield_completion_callback_uses_worker_overlay_without_gui_reanaly
 
         def __init__(self) -> None:
             self.canvas = _Canvas()
+            self.white_balance = SimpleNamespace(sync=lambda: None)
 
     class _Host:
         def __init__(self) -> None:
@@ -1424,7 +1477,7 @@ def test_async_brightfield_matches_existing_synchronous_numeric_results(tmp_path
     async_panel = BrightfieldPanel(panel_id="async")
     sync_panel.import_image(str(image_path), stain_type="H&E")
     async_panel.import_image(str(image_path), stain_type="H&E")
-    sync_result = sync_panel.auto_analyze_he(settings={}, guided_mode="foolproof")
+    sync_result = sync_panel.auto_analyze_he(settings={})
 
     service = AnalysisJobService()
     panel_ref = [async_panel]

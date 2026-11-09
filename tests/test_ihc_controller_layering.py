@@ -6,17 +6,12 @@ from pathlib import Path
 
 
 CONTROLLER_PATH = Path("ui/controllers/ihc_analysis_controller.py")
-MODE_HELPER_PATH = Path("ui/controllers/ihc_mode.py")
 MAIN_WINDOW_PATH = Path("ui/main_window.py")
 FORBIDDEN_UI_SYMBOLS = {"MainWindow", "QWidget", "QDialog", "QMessageBox"}
 
 
 def _controller_tree() -> ast.Module:
     return ast.parse(CONTROLLER_PATH.read_text(encoding="utf-8"))
-
-
-def _mode_helper_tree() -> ast.Module:
-    return ast.parse(MODE_HELPER_PATH.read_text(encoding="utf-8"))
 
 
 def _main_window_tree() -> ast.Module:
@@ -104,33 +99,11 @@ def test_ihc_controller_imports_stay_layered() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom) and node.module is not None
     }
-    assert "ui.controllers.ihc_mode" in import_from_modules
-
-
-def test_ihc_mode_helper_module_imports() -> None:
-    module = importlib.import_module("ui.controllers.ihc_mode")
-    assert module.normalize_ihc_mode("expert") == "expert"
-    assert module.normalize_ihc_mode("assisted") == "assisted"
-    assert module.normalize_ihc_mode("unknown") == "foolproof"
-
-
-def test_ihc_mode_helper_imports_stay_layered() -> None:
-    tree = _mode_helper_tree()
-    _assert_no_mainwindow_imports(tree)
-    import_from_modules = {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module is not None
-    }
-    assert import_from_modules <= {"__future__"}
+    assert "ui.controllers.ihc_mode" not in import_from_modules
 
 
 def test_ihc_controller_does_not_use_qt_widgets_or_dialogs() -> None:
     _assert_no_qt_widget_calls(_controller_tree())
-
-
-def test_ihc_mode_helper_does_not_use_qt_widgets_or_dialogs() -> None:
-    _assert_no_qt_widget_calls(_mode_helper_tree())
 
 
 def test_mainwindow_run_ihc_analysis_is_single_delegation() -> None:

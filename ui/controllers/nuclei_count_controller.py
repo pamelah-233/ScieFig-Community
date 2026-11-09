@@ -11,6 +11,7 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QFileDialog
 from core.image_browser import rgb_to_qimage
 from core.plotting.histology_display import qimage_rgb
+from core.plotting.histology_processing import histology_input_context
 from core.utils.i18n import tr
 from core.utils.recent_directory import recent_directory,remember_file_directory
 from ui.widgets.nuclei_count_controls import NucleiCountControls
@@ -97,10 +98,12 @@ class NucleiCountController(QObject):
         if self.current_task()=='muscle':
             fiber,nuclear=self.joint_sources()
             return deepcopy(dict(identity=self.identity(),task='muscle',fiber=fiber,nuclear=nuclear,
+                                 histology_input=histology_input_context(record),
                                  peripheral_band=self.controls.band.value()))
         scope=self.controls.roi.currentData()
         return deepcopy(dict(identity=self.identity(),task=self.current_task(),parameters=self.controls.parameters(),
             segmentation_input=self.panel().segmentation_input_context(record['uid']) if self.module=='fluoro' and record.get('uid') else None,
+            histology_input=histology_input_context(record) if self.module=='brightfield' else None,
             channel=self.controls.channel.currentData() if self.module=='fluoro' else None,scope=scope,
             roi=record.get('rois' if self.module=='fluoro' else 'roi') if scope=='roi' else None,
             channel_interpretation=record.get('channel_interpretation')))
@@ -326,6 +329,7 @@ class NucleiCountController(QObject):
                           source_hash=record.get('source_hash'),channel_index=channel_index,
                           roi=roi_snapshot,provenance=provenance,object_kind=object_kind)
             if self.module=='fluoro':result['segmentation_input']=deepcopy(inputs['segmentation_input'])
+            else:result['input_processing']=deepcopy(inputs['histology_input'])
             return result
         self.controls.summary.setText(tr('nuclei_running'))
         self.window._analysis_job_service.start(key=self.job_key,work=work,on_success=self.accept_result,

@@ -75,6 +75,8 @@ class IHCPreviewCanvas(PreviewCanvas):
         uid = str(image_uid or "")
         if self._preview_image_uid == uid:
             return
+        if self.image_label is not None:
+            self.image_label.clear_selection_draft()
         self._preview_image_uid = uid
         self._view_controller.set_content_identity(("image",uid))
         self._original_pixmap = None
@@ -145,7 +147,7 @@ class IHCPreviewCanvas(PreviewCanvas):
             self.title.setText(title)
         if body:
             self.body.setText(body)
-        self._refresh_image_display()
+        self._apply_paper_zoom()
         self.preview_mode_changed.emit(self._preview_mode, self.has_overlay_pixmap())
 
     def set_roi_selection_enabled(self, enabled: bool) -> None:

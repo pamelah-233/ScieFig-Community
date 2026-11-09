@@ -86,21 +86,22 @@ def test_fluorescence_form_labels_and_background_choice_localize_without_changin
     workspace.close()
 
 
-def test_detached_histology_modes_retranslate_without_mode_or_metric_changes(app):
+def test_detached_histology_retranslates_saved_analysis_settings(app):
     from ui.panels.placeholder_panel import DataInputPanel
 
     panel = DataInputPanel()
     panel.ihc_context_stack.setParent(None)
     panel.brightfield_context_stack.setParent(None)
-    panel.ihc_mode_combo.setCurrentIndex(panel.ihc_mode_combo.findData('assisted'))
-    panel.brightfield_segmentation_mode_combo.setCurrentIndex(panel.brightfield_segmentation_mode_combo.findData('lab'))
+    panel.set_ihc_detection_sensitivity("high")
+    panel.set_brightfield_area_analysis_settings({"threshold_bias": 1, "small_region_filter_bias": -1})
     set_language('zh')
     panel.retranslate()
-    assert panel.ihc_mode_combo.currentData() == 'assisted'
-    assert panel.ihc_mode_combo.currentText() == tr('assisted')
-    assert panel.brightfield_segmentation_mode_combo.currentData() == 'lab'
-    assert panel.brightfield_segmentation_mode_combo.currentText() == 'LAB 颜色范围'
-    assert not any(group.title() == 'Calibration & presets' for group in panel.ihc_context_stack.findChildren(QGroupBox))
+    assert panel.ihc_threshold_calibration.toggle.text() == '校准阳性阈值'
+    assert panel.ihc_detection_sensitivity() == "high"
+    assert panel.ihc_detection_sensitivity_value_label.text() == "高"
+    assert panel.brightfield_area_analysis_settings() == {"threshold_bias": 1, "small_region_filter_bias": -1}
+    assert panel.brightfield_detection_sensitivity_combo.currentText() == '+1 较灵敏'
+    assert panel.brightfield_small_region_filter_combo.currentText() == '-1 减少过滤'
     panel.ihc_context_stack.close()
     panel.brightfield_context_stack.close()
     panel.close()
@@ -142,7 +143,6 @@ def test_histology_metric_labels_localize_but_analysis_identifiers_remain_unchan
 
     panel = DataInputPanel()
     panel.ihc_stats_metric_combo.setCurrentText('Mean DAB Intensity')
-    panel.ihc_quant_goal_combo.setCurrentText('Positive Area %')
     panel.brightfield_stats_metric_combo.setCurrentText('ROI Mean Intensity')
     set_language('zh')
     panel.retranslate()
@@ -150,9 +150,9 @@ def test_histology_metric_labels_localize_but_analysis_identifiers_remain_unchan
     assert panel.current_brightfield_stats_metric() == 'ROI Mean Intensity'
     assert panel.ihc_stats_metric_combo.currentText() == '平均 DAB 强度'
     assert panel.brightfield_stats_metric_combo.currentText() == 'ROI 平均强度'
-    assert panel.current_ihc_quantification_goal() == 'Positive Area %'
-    assert '阳性面积' in panel.ihc_quant_goal_combo.currentText()
-    assert panel.brightfield_mode_combo.itemText(0) == '简易'
+    sensitivity_label = panel.brightfield_area_controls.layout().labelForField(
+        panel.brightfield_detection_sensitivity_combo)
+    assert sensitivity_label.text() == tr('detection_sensitivity')
     panel.close()
 
 

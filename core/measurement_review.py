@@ -12,8 +12,6 @@ from math import isfinite, pi, sqrt
 import cv2
 import numpy as np
 from scipy import ndimage
-from skimage.draw import polygon
-from skimage.measure import find_contours
 
 from core.measurement_scale import apply_area_scale, apply_length_scale
 
@@ -175,6 +173,7 @@ class ObjectReviewSession:
             if kind == 'polygon':
                 pts = _points(coords.get('points', []))
                 if len(pts) >= 3:
+                    from skimage.draw import polygon
                     rr, cc = polygon(np.asarray(pts)[:, 1], np.asarray(pts)[:, 0], self.image_shape)
                     allowed[rr, cc] = True
             else:
@@ -188,6 +187,8 @@ class ObjectReviewSession:
         return allowed
 
     def _polygon_mask(self, points):
+        from skimage.draw import polygon
+
         pts = np.asarray(_points(points), dtype=float)
         if len(pts) < 3 or not np.isfinite(pts).all():
             raise ValueError('A polygon needs at least three finite vertices.')
@@ -223,6 +224,7 @@ class ObjectReviewSession:
             for y, x0, x1 in row['review_mask_runs']:
                 mask[int(y), int(x0):int(x1)] = True
         else:
+            from skimage.draw import polygon
             for points in row['review_contours_px']:
                 pts = np.asarray(_points(points), float)
                 rr, cc = polygon(pts[:, 1], pts[:, 0], self.image_shape)
@@ -232,6 +234,8 @@ class ObjectReviewSession:
         return mask
 
     def _measured_row(self, mask, identifier, action, parents, source=None):
+        from skimage.measure import find_contours
+
         row = deepcopy(source or {})
         yy, xx = np.nonzero(mask)
         y0, y1, x0, x1 = int(yy.min()), int(yy.max() + 1), int(xx.min()), int(xx.max() + 1)

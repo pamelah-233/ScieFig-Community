@@ -27,11 +27,8 @@ class BrightfieldTraditionalAnalysisController:
         *,
         get_panel: Callable[[], Any],
         cancel_preview_debounce: Callable[[], None],
-        get_current_mode: Callable[[], str],
         get_current_stain_type: Callable[[], str],
-        get_expert_settings: Callable[[], dict[str, Any]],
-        get_assisted_settings: Callable[[], dict[str, Any]],
-        get_foolproof_settings: Callable[[], dict[str, Any]],
+        get_settings: Callable[[], dict[str, Any]],
         refresh_measurement_views: Callable[..., None],
         notify_user: Callable[[str, str], None],
         report_failure: Callable[[str, str, Exception], None],
@@ -41,11 +38,8 @@ class BrightfieldTraditionalAnalysisController:
     ) -> None:
         self._get_panel = get_panel
         self._cancel_preview_debounce = cancel_preview_debounce
-        self._get_current_mode = get_current_mode
         self._get_current_stain_type = get_current_stain_type
-        self._get_expert_settings = get_expert_settings
-        self._get_assisted_settings = get_assisted_settings
-        self._get_foolproof_settings = get_foolproof_settings
+        self._get_settings = get_settings
         self._refresh_measurement_views = refresh_measurement_views
         self._notify_user = notify_user
         self._report_failure = report_failure
@@ -69,16 +63,9 @@ class BrightfieldTraditionalAnalysisController:
             return
 
         try:
-            mode = str(self._get_current_mode() or "").strip().lower()
-            stain_type = normalize_brightfield_stain_type(self._get_current_stain_type() or "H&E")
-            if stain_type != "H&E" and mode == "assisted":
-                self._notify_user(
-                    tr("v9_module_brightfield"),
-                    tr("brightfield_assisted_non_he_unavailable"),
-                )
-                return
-            settings = self._settings_for_mode(mode) if mode == "expert" or stain_type == "H&E" else None
-            captured_inputs = self._invocation_inputs(panel, mode, stain_type, settings)
+            stain_type = normalize_brightfield_stain_type(self._get_current_stain_type())
+            settings = deepcopy(self._get_settings()) if stain_type == "H&E" else {}
+            captured_inputs = self._invocation_inputs(panel, stain_type, settings)
             panel_fingerprint = _panel_context_fingerprint(panel)
             snapshot_panel = _clone_panel(panel)
         except Exception as exc:
@@ -86,15 +73,7 @@ class BrightfieldTraditionalAnalysisController:
             return
 
         def work() -> tuple[Any, dict[str, Any], Any]:
-            if mode == "expert":
-                measurement = snapshot_panel.create_measurement(settings=settings)
-            elif stain_type == "H&E":
-                measurement = snapshot_panel.auto_analyze_he(settings=settings, guided_mode=mode)
-            else:
-                measurement = snapshot_panel.create_profile_preset_measurement(
-                    stain_type=stain_type,
-                    guided_mode=mode,
-                )
+            measurement = self._measure(snapshot_panel, stain_type, settings)
             overlay = snapshot_panel.render_measurement_overlay(
                 image_uid=str(measurement.get("image_uid", "")),
                 measurement_uuid=str(measurement.get("measurement_uuid", "")),
@@ -103,12 +82,11 @@ class BrightfieldTraditionalAnalysisController:
 
         def is_current() -> bool:
             try:
-                current_settings = self._settings_for_mode(mode) if settings is not None else None
+                current_settings = self._get_settings() if stain_type == "H&E" else {}
                 return (
                     self._get_panel() is panel
                     and _panel_context_fingerprint(panel) == panel_fingerprint
-                    and str(self._get_current_mode() or "").strip().lower() == mode
-                    and normalize_brightfield_stain_type(self._get_current_stain_type() or "H&E") == stain_type
+                    and normalize_brightfield_stain_type(self._get_current_stain_type()) == stain_type
                     and current_settings == settings
                 )
             except Exception:
@@ -148,29 +126,10 @@ class BrightfieldTraditionalAnalysisController:
 
     def _run_analysis_sync(self, panel: Any) -> None:
         try:
-            mode = str(self._get_current_mode() or "").strip().lower()
-            stain_type = normalize_brightfield_stain_type(self._get_current_stain_type() or "H&E")
-            settings = self._settings_for_mode(mode) if mode == "expert" or stain_type == "H&E" else None
-            captured_inputs = self._invocation_inputs(panel, mode, stain_type, settings)
-            if mode == "expert":
-                measurement = panel.create_measurement(settings=settings)
-            else:
-                if stain_type != "H&E" and mode == "assisted":
-                    self._notify_user(
-                        tr("v9_module_brightfield"),
-                        tr("brightfield_assisted_non_he_unavailable"),
-                    )
-                    return
-                if stain_type == "H&E":
-                    measurement = panel.auto_analyze_he(
-                        settings=settings,
-                        guided_mode=mode,
-                    )
-                else:
-                    measurement = panel.create_profile_preset_measurement(
-                        stain_type=stain_type,
-                        guided_mode=mode,
-                    )
+            stain_type = normalize_brightfield_stain_type(self._get_current_stain_type())
+            settings = deepcopy(self._get_settings()) if stain_type == "H&E" else {}
+            captured_inputs = self._invocation_inputs(panel, stain_type, settings)
+            measurement = self._measure(panel, stain_type, settings)
             if isinstance(measurement, dict):
                 attach_analysis_inputs(measurement, captured_inputs)
             self._refresh_measurement_views(
@@ -181,7 +140,13 @@ class BrightfieldTraditionalAnalysisController:
         except Exception as exc:
             self._report_failure(tr("brightfield_analysis_failed_title"), "Brightfield analysis failed", exc)
 
-    def _invocation_inputs(self, panel: Any, mode: str, stain_type: str, settings: dict[str, Any] | None) -> dict[str, Any]:
+    @staticmethod
+    def _measure(panel: Any, stain_type: str, settings: dict[str, Any]) -> dict[str, Any]:
+        if stain_type == "H&E":
+            return panel.auto_analyze_he(settings=settings)
+        return panel.create_profile_preset_measurement(stain_type=stain_type)
+
+    def _invocation_inputs(self, panel: Any, stain_type: str, settings: dict[str, Any]) -> dict[str, Any]:
         if self._capture_analysis_inputs is not None:
             return deepcopy(self._capture_analysis_inputs() or {})
         image = panel.active_image() or {}
@@ -193,9 +158,7 @@ class BrightfieldTraditionalAnalysisController:
         else:
             roi = image.get("roi")
         calibration = panel.measurement_scale_bar(image_uid) if image_uid else None
-        payload_settings = {"mode": mode, "stain_type": stain_type}
-        if settings:
-            payload_settings.update(deepcopy(settings))
+        payload_settings = {"mode": "foolproof", "stain_type": stain_type, **settings}
         return build_analysis_inputs(
             method="brightfield",
             settings=payload_settings,
@@ -203,10 +166,3 @@ class BrightfieldTraditionalAnalysisController:
             roi=roi if isinstance(roi, dict) else None,
             calibration=calibration if isinstance(calibration, dict) else None,
         )
-
-    def _settings_for_mode(self, mode: str) -> dict[str, Any]:
-        if mode == "expert":
-            return deepcopy(self._get_expert_settings())
-        if mode == "assisted":
-            return deepcopy(self._get_assisted_settings())
-        return deepcopy(self._get_foolproof_settings())

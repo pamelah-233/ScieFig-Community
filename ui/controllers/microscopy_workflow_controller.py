@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import QDialog, QInputDialog, QMessageBox, QPushButton
 from core.utils.i18n import bind_i18n, tr
+from core.models.brightfield_panel import normalize_brightfield_stain_type
 from ui.widgets.calibration_controls import action_grid
 
 
@@ -44,26 +45,16 @@ class MicroscopyWorkflowController:
                     settings=fluoro.ai_analysis_settings())
             raise ValueError(tr('batch_choose_count_mode'))
         if module == 'ihc':
-            mode = controls.current_ihc_guided_mode()
-            if mode == 'expert':
-                return 'measure_dab_positive_area', dict(settings=controls.ihc_analysis_settings(), roi=whole)
-            settings = controls.ihc_guided_analysis_settings() if mode == 'assisted' else controls.ihc_foolproof_analysis_settings()
-            return 'auto_analyze_dab', dict(settings=settings, guided_mode=mode, roi=whole)
+            return 'auto_analyze_dab', dict(settings=self.panel(module).dab_auto_settings(), guided_mode='foolproof', roi=whole)
         kind = controls.brightfield_measure_type_combo.currentData()
         if kind == 'cells':
             return 'measure_bright_round_cells', dict(settings=controls.bright_round_cell_analysis_settings(), roi=whole)
         if kind == 'fiber':
-            return 'create_ai_object_count_measurement', dict(settings=controls.brightfield_analysis_settings(), roi=whole)
-        mode = controls.current_brightfield_guided_mode()
-        stain = controls.brightfield_stain_type_combo.currentText()
-        if mode == 'expert':
-            return 'create_measurement', dict(settings=controls.brightfield_analysis_settings(), roi=whole)
+            return 'create_ai_object_count_measurement', dict(settings=controls.brightfield_he_fiber_analysis_settings(), roi=whole)
+        stain = normalize_brightfield_stain_type(controls.brightfield_stain_type_combo.currentText())
         if stain != 'H&E':
-            if mode == 'assisted':
-                raise ValueError(tr('brightfield_assisted_non_he_unavailable'))
-            return 'create_profile_preset_measurement', dict(stain_type=stain, guided_mode=mode, roi=whole)
-        settings = controls.brightfield_guided_analysis_settings() if mode == 'assisted' else controls.brightfield_foolproof_analysis_settings()
-        return 'auto_analyze_he', dict(settings=settings, guided_mode=mode, roi=whole)
+            return 'create_profile_preset_measurement', dict(stain_type=stain, roi=whole)
+        return 'auto_analyze_he', dict(settings=controls.brightfield_area_analysis_settings(), roi=whole)
 
     def batch(self, module):
         from ui.dialogs.batch_analysis_dialog import BatchAnalysisDialog

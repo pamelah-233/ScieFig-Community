@@ -38,7 +38,9 @@ def test_selector_and_excel_use_saved_method_not_current_selection(tmp_path):
     workspace=FluorescenceWorkspace()
     try:
         workspace.panel=panel
-        assert workspace.count_algorithm_combo.currentData()=='traditional'
+        assert workspace.count_algorithm_combo.currentData()=='log'
+        workspace.set_count_analysis_settings({'algorithm':'traditional'})
+        assert workspace.sample_spot_button.isEnabled()
         workspace.count_algorithm_combo.setCurrentIndex(workspace.count_algorithm_combo.findData('cellpose_cyto3'))
         assert not workspace.sample_spot_button.isEnabled()
         workspace._populate_count_results()
@@ -73,6 +75,7 @@ def test_each_count_refreshes_and_selects_new_numeric_row():
         workspace._effective_count_channels=lambda:[0]
         workspace._populate_overlap_results=lambda:None
         workspace._populate_fluoro_stats_controls=lambda:None
+        workspace.set_count_analysis_settings({'algorithm':'traditional'})
         workspace.threshold_method_combo.setCurrentText('manual')
         workspace.threshold_value_spin.setValue(20)
         workspace._count_spots()

@@ -116,12 +116,16 @@ class BrightfieldPreviewCanvas(PreviewCanvas):
         self._preview_mode = "original"
         self._measurement_scale_bar: dict[str, object] = {}
         self._preview_image_uid = ""
+        self._measurement_overlay_cache_key = None
 
     def bind_preview_image(self, image_uid: str) -> None:
         uid = str(image_uid or "")
         if self._preview_image_uid == uid:
             return
+        if self.image_label is not None:
+            self.image_label.clear_selection_draft()
         self._preview_image_uid = uid
+        self._measurement_overlay_cache_key = None
         self._view_controller.set_content_identity(("image",uid))
         self._original_pixmap = None
         self._overlay_pixmap = None
@@ -174,7 +178,7 @@ class BrightfieldPreviewCanvas(PreviewCanvas):
             self.title.setText(title)
         if body:
             self.body.setText(body)
-        self._refresh_image_display()
+        self._apply_paper_zoom()
         self.preview_mode_changed.emit(self._preview_mode, self.has_overlay_pixmap())
 
     def _ensure_image_label(self) -> SelectableImageLabel:
@@ -235,6 +239,7 @@ class BrightfieldPreviewCanvas(PreviewCanvas):
         is_overlay: bool | None = None,
     ) -> None:
         self.placeholder.hide()
+        self._measurement_overlay_cache_key = None
         incoming = QPixmap(pixmap)
         if is_overlay if is_overlay is not None else self._is_overlay_title(title):
             self._overlay_pixmap = incoming
@@ -256,6 +261,7 @@ class BrightfieldPreviewCanvas(PreviewCanvas):
         self._apply_preview_mode(next_mode)
 
     def clear_overlay_pixmap(self) -> None:
+        self._measurement_overlay_cache_key = None
         self._overlay_pixmap = None
         self._overlay_title = ""
         self._overlay_body = ""
@@ -267,6 +273,7 @@ class BrightfieldPreviewCanvas(PreviewCanvas):
     def clear_figure(self) -> None:
         super().clear_figure()
         self._scaled_base_cache.clear()
+        self._measurement_overlay_cache_key = None
         self._original_pixmap = None
         self._overlay_pixmap = None
         self._original_title = ""

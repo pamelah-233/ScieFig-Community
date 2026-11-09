@@ -5,7 +5,9 @@ import sys
 
 from ui.widgets.canvas_presentation import content_frame_rect, paint_canvas_paper, paint_canvas_surround
 from ui.widgets.canvas_graphics_adapter import as_viewport_point
-from ui.widgets.canvas_view_controller import CanvasNavigationFilter, SceneCanvasOwnerMixin, attach_canvas_controller
+from ui.widgets.canvas_view_controller import (
+    CanvasNavigationFilter, SceneCanvasOwnerMixin, attach_canvas_controller, clamp_canvas_offset,
+)
 from ui.widgets.canvas_zoom import CanvasZoomControls, FIT_VIEWPORT_MARGIN_PX, actual_zoom_factor, next_manual_zoom
 
 from PyQt6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, pyqtSignal
@@ -98,11 +100,9 @@ class SourceCanvasBackend:
         point, page = captured
         self.canvas.keep_page_point_at(page, point)
 
-    def prepare_pan(self) -> None:
-        return
-
     def pan_by(self, dx: int, dy: int) -> None:
-        self.canvas.pan_view(dx, dy)
+        if not self.canvas._pixmap.isNull():
+            self.canvas.pan_view(dx, dy)
 
 
 class SourceCanvas(SceneCanvasOwnerMixin, QWidget):
@@ -184,22 +184,26 @@ class SourceCanvas(SceneCanvasOwnerMixin, QWidget):
         rect = self._content_rect()
         width = rect.width() / (self._pixmap.width()*zoom)
         height = rect.height() / (self._pixmap.height()*zoom)
-        self._view_window = [center[0]-width/2, center[1]-height/2, width, height]
-        self.update()
+        self._set_view_center(center[0], center[1], width, height)
 
     def keep_page_point_at(self, page, widget_pos) -> None:
         rect = self._content_rect()
         width, height = self._view_window[2:]
         x = page[0] - (widget_pos.x()-rect.x())/max(1,rect.width())*width
         y = page[1] - (widget_pos.y()-rect.y())/max(1,rect.height())*height
-        self._view_window = [x,y,width,height]
-        self.update()
+        self._set_view_center(x + width/2, y + height/2, width, height)
 
     def pan_view(self, dx, dy) -> None:
         rect = self._content_rect()
         x,y,width,height = self._view_window
-        self._view_window = [x-dx/max(1,rect.width())*width,
-                             y-dy/max(1,rect.height())*height,width,height]
+        self._set_view_center(x + width/2 - dx/rect.width()*width,
+                              y + height/2 - dy/rect.height()*height, width, height)
+
+    def _set_view_center(self, x: float, y: float, width: float, height: float) -> None:
+        rect = self._content_rect()
+        offset_x = clamp_canvas_offset(x - .5, 1, width * self.width() / rect.width())
+        offset_y = clamp_canvas_offset(y - .5, 1, height * self.height() / rect.height())
+        self._view_window = [.5 + offset_x - width/2, .5 + offset_y - height/2, width, height]
         self.update()
 
     def _content_rect(self) -> QRectF:

@@ -529,9 +529,7 @@ def test_sfig_roundtrip_and_dirty_fingerprint_excludes_browser_state(tmp_path, m
         workspace.length_spin.setValue(31.0)
         workspace.scale_bar_checkbox.setChecked(True)
         assert window.is_project_dirty() is True
-        before_import_fp = window._microscopy_import_project_fingerprint(window.project)
         window._store_browser_workspace_state()
-        assert window._microscopy_import_project_fingerprint(window.project) == before_import_fp
         sfig = tmp_path / "browser.sfig"
         window.project.save_sfig(sfig)
         loaded = Project.load_sfig(sfig)

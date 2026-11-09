@@ -100,7 +100,7 @@ class WBGraphicsView(CanvasGraphicsView):
 
     def set_mode(self, mode: str) -> None:
         self.mode = mode
-        self._clear_live_roi()
+        self.clear_selection_draft()
         if mode == "move":
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         elif mode in {"roi", "text_select"}:
@@ -179,27 +179,25 @@ class WBGraphicsView(CanvasGraphicsView):
         if event.button() == Qt.MouseButton.LeftButton and self._press_scene_pos is not None:
             release_pos = self.mapToScene(_event_viewport_point(event))
             if self.mode == "lane":
+                self.clear_selection_draft()
                 self.lane_anchor_selected.emit(release_pos.x())
-                self._press_scene_pos = None
                 event.accept()
                 return
             if self.mode == "marker":
+                self.clear_selection_draft()
                 self.marker_anchor_selected.emit(release_pos.y())
-                self._press_scene_pos = None
                 event.accept()
                 return
             if self.mode == "roi":
                 selected = QRectF(self._press_scene_pos, release_pos).normalized()
-                self._press_scene_pos = None
-                self._clear_live_roi()
+                self.clear_selection_draft()
                 if selected.width() > 3 and selected.height() > 3:
                     self.roi_selected.emit(selected)
                     event.accept()
                     return
             if self.mode == "text_select":
                 selected = QRectF(self._press_scene_pos, release_pos).normalized()
-                self._press_scene_pos = None
-                self._clear_live_roi()
+                self.clear_selection_draft()
                 if selected.width() > 3 and selected.height() > 3:
                     self._select_text_items_in_rect(selected)
                     event.accept()
@@ -274,7 +272,8 @@ class WBGraphicsView(CanvasGraphicsView):
             return
         super().wheelEvent(event)
 
-    def _clear_live_roi(self) -> None:
+    def clear_selection_draft(self) -> None:
+        self._press_scene_pos = None
         if self._roi_rect_item is not None:
             self.scene().removeItem(self._roi_rect_item)
             self._roi_rect_item = None
@@ -786,6 +785,7 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
              bool(layout.get('enabled')),step,
              bool(layout.get('stats_plot',{}).get('enabled') and data.get('wb_statistics',{}).get('plot_data')),
              tuple(data.get('placed_strip_ids',[])),int(data.get('selected_strip_index',0)) if step < 3 else None))
+        self.view.clear_selection_draft()
         self.scene.clear()
         self._group = None
         self._stats_group = None
@@ -903,28 +903,31 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
                 self._group.addToGroup(text)
                 self._density_overlay_items.append(text)
 
-    def scene_roi_to_source_roi(self, rect: QRectF) -> tuple[int, int, int, int]:
-        if self._group is None:
-            return (0, 0, 1, 1)
+    def scene_roi_to_source_roi(self, rect: QRectF) -> tuple[int, int, int, int] | None:
+        if (self._group is None or self.panel is None or self._strip_display_rects
+                or self.panel.data.get("wb_layout", {}).get("enabled")):
+            return None
         local = self._group.mapFromScene(QRectF(rect)).boundingRect()
-        return self._local_rect_to_source_roi(local)
+        image_data = self.panel.data.get("image_data", {})
+        display = QRectF(0, 0, int(image_data.get("width_px", 0)), int(image_data.get("height_px", 0)))
+        return self._clipped_crop_roi(local, display)
 
-    def scene_roi_to_strip_roi(self, rect: QRectF, strip_index: int) -> tuple[int, int, int, int]:
+    def scene_roi_to_strip_roi(self, rect: QRectF, strip_index: int) -> tuple[int, int, int, int] | None:
         if self._group is None:
-            return (0, 0, 1, 1)
+            return None
         local = self._group.mapFromScene(QRectF(rect)).boundingRect()
         for entry in self._strip_display_rects:
-            if int(entry.get("index", -1)) != strip_index:
-                continue
-            display = entry["display_rect"]
-            clipped = local.intersected(display)
-            if clipped.isEmpty():
-                clipped = local
-            source_roi = entry["source_roi"]
-            x = int(source_roi.get("x", 0) + clipped.x() - display.x())
-            y = int(source_roi.get("y", 0) + clipped.y() - display.y())
-            return (x, y, max(int(clipped.width()), 1), max(int(clipped.height()), 1))
-        return self.scene_roi_to_source_roi(rect)
+            if entry["index"] == strip_index and "display_scale" not in entry:
+                return self._clipped_crop_roi(local, entry["display_rect"])
+        return None
+
+    @staticmethod
+    def _clipped_crop_roi(rect: QRectF, display: QRectF) -> tuple[int, int, int, int] | None:
+        clipped = rect.intersected(display)
+        if clipped.isEmpty():
+            return None
+        return (int(clipped.x() - display.x()), int(clipped.y() - display.y()),
+                max(1, int(clipped.width())), max(1, int(clipped.height())))
 
     def scene_lane_x_to_source_x(self, scene_x: float) -> float:
         if self._group is None:
@@ -1261,18 +1264,6 @@ class WBCanvas(SceneCanvasOwnerMixin, QWidget):
             if projection[index] >= threshold and projection[index] >= projection[index - 1] and projection[index] >= projection[index + 1]:
                 candidates.append(index)
         return candidates
-
-    def _local_rect_to_source_roi(self, rect: QRectF) -> tuple[int, int, int, int]:
-        if self.panel is None:
-            return (0, 0, 1, 1)
-        image_data = self.panel.data.get("image_data", {})
-        max_width = int(image_data.get("width_px", 1))
-        max_height = int(image_data.get("height_px", 1))
-        x = max(0, min(int(rect.x()), max_width - 1))
-        y = max(0, min(int(rect.y()), max_height - 1))
-        width = max(1, min(int(rect.width()), max_width - x))
-        height = max(1, min(int(rect.height()), max_height - y))
-        return x, y, width, height
 
     def _record_group_position(self, x: float, y: float) -> None:
         if self.panel is None or self._group is None:

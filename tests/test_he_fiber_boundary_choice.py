@@ -56,23 +56,19 @@ def test_worker_accepts_exact_model_without_silent_fallback(monkeypatch):
     assert labels.shape==(20,30) and meta['model']==MODEL
 
 
-def test_he_ui_coexistence_and_explicit_reference_load(qt_application,desktop_screen):
+def test_he_ui_order_and_switching_preserve_diameter(qt_application,desktop_screen):
     from ui.main_window import MainWindow
     window=MainWindow(Path(__file__).resolve().parents[1]/'resources');window.project_recovery.timer.stop()
     try:
         data=window.data_panel;combo=data.brightfield_he_fiber_method_combo
-        assert combo.currentData()=='original'
-        assert all(combo.findData(k)>=0 for k in ['original','anti_oversegmentation','cellpose_cyto3',METHOD])
+        assert combo.currentData()=='cellpose_cyto3'
+        assert [combo.itemData(i) for i in range(combo.count())]==['cellpose_cyto3',METHOD,'anti_oversegmentation','original']
         data.brightfield_he_fiber_cellpose_diameter_spin.setValue(77)
         combo.setCurrentIndex(combo.findData(METHOD))
         assert data.brightfield_he_fiber_cellpose_diameter_spin.value()==77
         assert data.brightfield_he_fiber_cellpose_diameter_spin.isEnabled()
         assert not data.brightfield_he_fiber_splitting_slider.isEnabled()
         assert not hasattr(data,"brightfield_he_fiber_reference_button")
-        data._load_he_fiber_reference()
-        settings=data.brightfield_analysis_settings()
-        assert settings['he_fiber_cellpose_diameter_px']==50
-        assert settings['min_object_area_px']==60 and settings['max_object_area_px']==0
         for language in ('zh','en'):
             window.switch_language(language)
             assert combo.currentData()==METHOD and combo.currentText()==tr('he_fiber_method_'+METHOD)

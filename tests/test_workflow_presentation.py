@@ -221,7 +221,7 @@ def test_fluoro_task_precedes_secondary_tools_and_uses_full_names(window):
     ws = window.fluoro_workspace
     ws.set_step(2)
     APP.processEvents()
-    assert not ws.mode_combo.isVisible()
+    assert not hasattr(ws, 'mode_combo')
     assert not window.analysis_state.bars['fluorescence'].isVisible()
     assert not window.microscopy_workflow.batch_buttons['fluorescence'].isVisible()
     assert ws.measure_task_combo.currentText() == 'ROI 强度测量'
@@ -282,7 +282,7 @@ def test_advanced_settings_are_reachable_from_the_current_task(window, request):
     ws.secondary_tools_section.toggle.click()
     APP.processEvents()
     assert ws.secondary_tools_section.expanded
-    assert ws.mode_combo.isVisible()
+    assert window.analysis_state.bars['fluorescence'].isVisible()
 
 
 @pytest.mark.parametrize('language', ['zh', 'en'])

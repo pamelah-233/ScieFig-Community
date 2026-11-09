@@ -7,24 +7,25 @@ import pytest
 from test_myotube_workflow import myotube_window,import_example,wait_myotube_job
 
 
-def test_methods_keep_default_and_parameters(qt_application):
+def test_preferred_method_and_switching_preserve_parameters(qt_application):
     from ui.widgets.myotube_controls import MyotubeControls
     from core.utils.i18n import set_language,get_language
     language=get_language()
     try:
         set_language('zh');controls=MyotubeControls('brightfield')
-        assert [controls.method.itemText(i) for i in range(2)]==['通用肌管轮廓','长肌管边界适配']
-        assert controls.method.currentData()=='cyto3'
+        assert [controls.method.itemText(i) for i in range(2)]==['长肌管边界适配','通用肌管轮廓']
+        assert controls.method.currentData()=='truefad_rim_path'
+        controls.method.setCurrentIndex(controls.method.findData('cyto3'))
         controls.diameter.setValue(91);controls.minimum.setValue(83)
-        controls.method.setCurrentIndex(1)
+        controls.method.setCurrentIndex(controls.method.findData('truefad_rim_path'))
         assert controls.parameters()['method']=='truefad_rim_path'
         assert controls.diameter.value()==91 and controls.minimum.value()==83
         assert not controls.diameter.isEnabled()
         assert 'TRUEFAD' in controls.hint.text()
-        controls.method.setCurrentIndex(0)
+        controls.method.setCurrentIndex(controls.method.findData('cyto3'))
         assert controls.diameter.isEnabled() and controls.diameter.value()==91
         set_language('en');controls.retranslate()
-        assert controls.method.itemText(1)=='Long-myotube boundary adaptation'
+        assert controls.method.itemText(0)=='Long-myotube boundary adaptation'
         controls.close()
     finally:set_language(language)
 
@@ -36,9 +37,10 @@ def test_old_result_identity_and_method_selection(qt_application):
     new=dict(image_uid='a',channel_index=None,params={'method':'truefad_rim_path'},measurement_uuid='new')
     panel=SimpleNamespace(active_image=lambda:{'uid':'a'},analysis={'myotube_measurements':[old,new]})
     controls=MyotubeControls('brightfield')
-    controller=SimpleNamespace(panel=lambda:panel,controls=controls,module='brightfield')
+    controller=SimpleNamespace(panel=lambda:panel,controls=controls,module='brightfield',window=SimpleNamespace())
+    controls.method.setCurrentIndex(controls.method.findData('cyto3'))
     assert MyotubeController.current_result(controller) is old
-    controls.method.setCurrentIndex(1)
+    controls.method.setCurrentIndex(controls.method.findData('truefad_rim_path'))
     assert MyotubeController.current_result(controller) is new
     restored=json.loads(json.dumps(panel.analysis))
     assert restored['myotube_measurements'][0]==old
@@ -114,10 +116,12 @@ def test_method_switch_and_project_roundtrip(myotube_window,tmp_path,monkeypatch
     from core.models import Project
     window=myotube_window
     controller,panel,record,labels,_=import_example(window,'brightfield',tmp_path)
+    assert controller.controls.method.currentData()=='truefad_rim_path'
+    controller.controls.method.setCurrentIndex(controller.controls.method.findData('cyto3'))
     monkeypatch.setattr(cellpose_backend,'run_cellpose_labels',lambda *a,**k:(labels,{'model':'cyto3'}))
     controller.controls.diameter.setValue(88);controller.run();wait_myotube_job(window,controller)
     old=deepcopy(controller.current_result())
-    controller.controls.method.setCurrentIndex(1)
+    controller.controls.method.setCurrentIndex(controller.controls.method.findData('truefad_rim_path'))
     assert controller.current_result() is None and controller.controls.table.rowCount()==0
     assert controller.controls.diameter.value()==88
     assert len(panel.analysis['myotube_measurements'])==1  # Selecting never runs inference.
@@ -135,6 +139,6 @@ def test_method_switch_and_project_roundtrip(myotube_window,tmp_path,monkeypatch
     restored.cleanup_archive_extract_root()
     pending=[];monkeypatch.setattr(window._analysis_job_service,'start',lambda **kw:pending.append(kw))
     controller.run();assert pending[0]['is_current']()
-    controller.controls.method.setCurrentIndex(0)
+    controller.controls.method.setCurrentIndex(controller.controls.method.findData('cyto3'))
     assert not pending[0]['is_current']() and controller.current_result()==old
 

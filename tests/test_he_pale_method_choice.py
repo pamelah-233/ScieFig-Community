@@ -70,17 +70,20 @@ def test_he_method_is_not_applicable_to_dapi():
         count_nuclei(np.zeros((20,20)),stain='dapi',method=METHOD)
 
 
-def test_he_choices_keep_defaults_and_only_explicit_recipe_changes_parameters(qt_application):
+def test_he_choices_keep_diameter_until_recipe_is_applied(qt_application):
     controls = NucleiCountControls('brightfield')
-    assert controls.parameters()['method'] == 'cellpose_nuclei'
+    assert controls.parameters()['method'] == METHOD
+    assert controls.parameters()['max_area_px'] == 500
     for method in ['cellpose_nuclei','watershed','he_round','he_refined','cellpose_cyto3',METHOD]:
         assert controls.method.findData(method) >= 0
     controls.diameter.setValue(23)
+    controls.method.setCurrentIndex(controls.method.findData('cellpose_nuclei'))
     controls.method.setCurrentIndex(controls.method.findData(METHOD))
     assert controls.diameter.value() == 23
     assert not hasattr(controls,"preset_button")
     params = dict(method=METHOD,diameter_px=12,min_area_px=8,max_area_px=2000,he_pale_settings=dict(min_solidity=.7))
     controls.set_parameters(params)
+    assert controls.parameters()['max_area_px'] == 2000
     assert controls.parameters()['he_pale_settings'] == dict(min_solidity=.7)
     controls.method.setCurrentIndex(controls.method.findData('cellpose_cyto3'))
     assert controls.parameters()['cellpose_input'] == 'tile_normalization'
@@ -98,7 +101,7 @@ def test_he_selection_and_results_follow_images_and_project_save(tmp_path,deskto
         c = window.nuclei_controllers['brightfield']; panel = c.panel()
         path = tmp_path/'he.png'; Image.fromarray(np.full((40,50,3),[230,160,185],np.uint8)).save(path)
         first = panel.import_image(path); window.set_module('brightfield'); c.sync()
-        assert c.controls.method.findData(METHOD) >= 0
+        assert c.controls.method.currentData() == METHOD
         c.controls.method.setCurrentIndex(c.controls.method.findData(METHOD))
         assert not window._analysis_job_service.is_busy(c.job_key)
         c.load_recipe()
@@ -106,7 +109,7 @@ def test_he_selection_and_results_follow_images_and_project_save(tmp_path,deskto
         assert c.controls.diameter.value() == 12
         assert c.controls.parameters()['he_pale_settings']['min_core_to_rim'] == 1.25
         second = panel.import_image(path); c.sync()
-        assert c.controls.method.currentData() == 'cellpose_nuclei'
+        assert c.controls.method.currentData() == METHOD
         panel.set_active_image(first['uid']); c.sync()
         assert c.controls.method.currentData() == METHOD
         results = panel.analysis.setdefault('nuclei_measurements',[])
@@ -127,7 +130,7 @@ def test_he_selection_and_results_follow_images_and_project_save(tmp_path,deskto
         c.controls.method.setCurrentIndex(c.controls.method.findData('cellpose_cyto3'))
         assert c.current_result()['parameters']['method'] == 'cellpose_cyto3'
         c.panel().set_active_image(second['uid']); c.sync()
-        assert c.controls.method.currentData() == 'cellpose_nuclei'
+        assert c.controls.method.currentData() == METHOD
     finally:
         window._capture_clean_project_baseline(); window.close(); window.deleteLater(); qt_application.processEvents()
 

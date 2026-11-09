@@ -79,61 +79,6 @@ def measure_channel_intensity(
     }
 
 
-def compute_hscore(
-    channel: np.ndarray,
-    roi_mask: np.ndarray,
-    weak_threshold: float,
-    moderate_threshold: float,
-    strong_threshold: float,
-) -> dict[str, float | int]:
-    """Compute H-score percentages and score within an ROI."""
-    if not (
-        float(weak_threshold) <= float(moderate_threshold) <= float(strong_threshold)
-    ):
-        raise ValueError("Thresholds must satisfy weak <= moderate <= strong.")
-
-    channel_2d = _as_2d_array(channel, name="channel")
-    selected = _resolve_selection(channel_2d.shape, roi_mask=roi_mask)
-    values = channel_2d[selected]
-    total_area_px = int(values.size)
-
-    if total_area_px == 0:
-        return {
-            "total_area_px": 0,
-            "negative_percent": 0.0,
-            "weak_percent": 0.0,
-            "moderate_percent": 0.0,
-            "strong_percent": 0.0,
-            "positive_percent": 0.0,
-            "h_score": 0.0,
-        }
-
-    weak_threshold = float(weak_threshold)
-    moderate_threshold = float(moderate_threshold)
-    strong_threshold = float(strong_threshold)
-
-    negative_count = int(np.count_nonzero(values < weak_threshold))
-    weak_count = int(np.count_nonzero((values >= weak_threshold) & (values < moderate_threshold)))
-    moderate_count = int(np.count_nonzero((values >= moderate_threshold) & (values < strong_threshold)))
-    strong_count = int(np.count_nonzero(values >= strong_threshold))
-
-    negative_percent = 100.0 * negative_count / total_area_px
-    weak_percent = 100.0 * weak_count / total_area_px
-    moderate_percent = 100.0 * moderate_count / total_area_px
-    strong_percent = 100.0 * strong_count / total_area_px
-    positive_percent = weak_percent + moderate_percent + strong_percent
-
-    return {
-        "total_area_px": total_area_px,
-        "negative_percent": float(negative_percent),
-        "weak_percent": float(weak_percent),
-        "moderate_percent": float(moderate_percent),
-        "strong_percent": float(strong_percent),
-        "positive_percent": float(positive_percent),
-        "h_score": float(weak_percent + 2.0 * moderate_percent + 3.0 * strong_percent),
-    }
-
-
 def render_mask_overlay(
     rgb: np.ndarray,
     mask: np.ndarray,
@@ -278,7 +223,6 @@ __all__ = [
     "BRIGHTFIELD_SPECIAL_STAIN_PROFILE",
     "build_tissue_background_mask",
     "clean_mask",
-    "compute_hscore",
     "DAB_IHC_PROFILE",
     "detect_artifact_mask",
     "estimate_dab_auto_parameters",

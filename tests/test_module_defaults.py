@@ -25,14 +25,14 @@ def test_reset_restores_built_in_advanced_parameters_without_running_analysis(em
         deck.controllers['myotube'].controls.minimum.setValue(1234)
         deck.controllers['he'].controls.diameter.setValue(99)
     else:
-        settings=w.data_panel.ihc_analysis_settings()
-        settings['positive_threshold']=.77
-        w.data_panel.set_ihc_analysis_settings(settings)
+        w.data_panel.ihc_overlay_opacity_slider.setValue(77)
     selected=w.measurement_tasks[module].current_task() if module in w.measurement_tasks else None
     w.module_defaults.button.click()
     restored=w.analysis_state.capture_widget_state(preset_module)
-    for key in ('count','ai','roi','expert','assisted','foolproof','cells','fiber','independent'):
+    for key in ('count','ai','roi','area','cells','fiber','independent'):
         if key in baseline:assert restored[key]==baseline[key],key
+    if module == 'ihc':
+        assert w.data_panel.ihc_overlay_opacity() == 0.35
     if selected is not None:assert w.measurement_tasks[module].current_task()==selected
     assert not w._analysis_job_service.has_busy_jobs()
 

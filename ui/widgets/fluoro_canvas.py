@@ -432,8 +432,8 @@ class FluoroGraphicsView(CanvasGraphicsView):
         self._scale_drag_start_line = QLineF()
 
     def set_roi_mode(self, mode: str) -> None:
-        if (self.roi_mode == "scale_line" and mode != "scale_line") or (self.roi_mode in {"display_black_point", "display_white_point"} and mode != self.roi_mode):
-            self._clear_scale_line_draft()
+        if self.roi_mode != mode:
+            self.clear_roi_draft()
         self.roi_mode = mode
         canvas = canvas_owner_of(self)
         if isinstance(canvas, FluorescenceCanvas) and canvas.current_step == 4 and not mode:
@@ -476,7 +476,7 @@ class FluoroGraphicsView(CanvasGraphicsView):
             event.accept()
             return
         if event.key() == Qt.Key.Key_Escape and self.roi_mode == "scale_line":
-            self._clear_scale_line_draft()
+            self.clear_roi_draft()
             event.accept()
             return
         if event.matches(QKeySequence.StandardKey.SelectAll):
@@ -571,13 +571,11 @@ class FluoroGraphicsView(CanvasGraphicsView):
             line = self._scale_drag_item.line()
             p1 = self._scale_drag_item.mapToScene(line.p1())
             p2 = self._scale_drag_item.mapToScene(line.p2())
+            self.clear_roi_draft()
             self.scene_roi_drawn.emit(
                 "scale_line",
                 {"x1": p1.x(), "y1": p1.y(), "x2": p2.x(), "y2": p2.y(), "move_existing": True},
             )
-            self._scale_drag_item = None
-            self._scale_drag_role = ""
-            self._scale_drag_start_line = QLineF()
             event.accept()
             return
         if event.button() == Qt.MouseButton.LeftButton and self._press_scene_pos is not None and self._temp_roi_item is not None and self.roi_mode:
@@ -593,7 +591,7 @@ class FluoroGraphicsView(CanvasGraphicsView):
                     "y2": end.y(),
                 }
                 if self.roi_mode == "scale_line":
-                    self._clear_scale_line_draft()
+                    self.clear_roi_draft()
                     if not scale_line_is_valid(payload):
                         event.accept()
                         return
@@ -602,10 +600,9 @@ class FluoroGraphicsView(CanvasGraphicsView):
                     return
             else:
                 payload = [(point.x(), point.y()) for point in self._freehand_points]
-            self.scene_roi_drawn.emit(self.roi_mode, payload)
-            self._press_scene_pos = None
-            self._temp_roi_item = None
-            self._freehand_points = []
+            mode = self.roi_mode
+            self.clear_roi_draft()
+            self.scene_roi_drawn.emit(mode, payload)
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -623,7 +620,7 @@ class FluoroGraphicsView(CanvasGraphicsView):
         )
         return QPointF(x2, y2)
 
-    def _clear_scale_line_draft(self) -> None:
+    def clear_roi_draft(self) -> None:
         if self._temp_roi_item is not None:
             scene = self._temp_roi_item.scene()
             if scene is not None:
@@ -631,6 +628,9 @@ class FluoroGraphicsView(CanvasGraphicsView):
         self._temp_roi_item = None
         self._press_scene_pos = None
         self._freehand_points = []
+        self._scale_drag_item = None
+        self._scale_drag_role = ""
+        self._scale_drag_start_line = QLineF()
 
     def _normalized_roi_rect(self, current: QPointF) -> QRectF:
         if self._press_scene_pos is None:
@@ -794,6 +794,7 @@ class FluorescenceCanvas(SceneCanvasOwnerMixin, QWidget):
             item.setPixmap(QPixmap.fromImage(qimage))
 
     def refresh(self) -> None:
+        self.view.clear_roi_draft()
         self.scene.clear()
         self._image_items = []
         self._measurement_overlay_item = None
@@ -2168,6 +2169,7 @@ class FluorescenceCanvas(SceneCanvasOwnerMixin, QWidget):
     def draw_line_profile_chart(self, rows: list[dict[str, Any]]) -> None:
         self._view_controller.set_content_identity(
             ("fluoro-profile",self.panel.panel_uuid if self.panel else None,bool(rows)))
+        self.view.clear_roi_draft()
         self.scene.clear()
         self.scene.setBackgroundBrush(QColor("#FFFFFF"))
         self._image_items = []
@@ -2484,13 +2486,21 @@ class FluorescenceCanvas(SceneCanvasOwnerMixin, QWidget):
         mapper = ImageCoordinateMapper(item, self._analysis_image_shape())
         mapped = []
         for x, y in points:
-            mapped.append(mapper.scene_pos_to_image_px(QPointF(x, y)))
+            point = QPointF(x, y)
+            target = self._item_for_scene_point(point)
+            if target is not None and target is not item:
+                return None
+            mapped.append(mapper.scene_pos_to_image_px(point))
         return self._with_source_channel({"points": mapped}, item)
 
     def _map_line_to_image_geometry(self, payload: dict[str, float]) -> dict[str, float] | None:
         start = QPointF(float(payload.get("x1", 0.0)), float(payload.get("y1", 0.0)))
         end = QPointF(float(payload.get("x2", start.x())), float(payload.get("y2", start.y())))
-        item = self._item_for_scene_point(start) or self._item_for_scene_point(end)
+        start_item = self._item_for_scene_point(start)
+        end_item = self._item_for_scene_point(end)
+        if start_item is not None and end_item is not None and start_item is not end_item:
+            return None
+        item = start_item if start_item is not None else end_item
         if item is None:
             return None
         mapper = ImageCoordinateMapper(item, self._analysis_image_shape())
@@ -2516,16 +2526,14 @@ class FluorescenceCanvas(SceneCanvasOwnerMixin, QWidget):
         return 1, 1
 
     def _item_for_scene_rect(self, rect: QRectF) -> QGraphicsPixmapItem | None:
-        for item in self._image_items:
-            if item.sceneBoundingRect().intersects(rect):
-                return item
-        return None
+        matches = [item for item in self._image_items if item.sceneBoundingRect().intersects(rect)]
+        return matches[0] if len(matches) == 1 else None
 
     def _item_for_scene_point(self, point: QPointF) -> QGraphicsPixmapItem | None:
         for item in self._image_items:
             if item.sceneBoundingRect().contains(point):
                 return item
-        return self._image_items[0] if self._image_items else None
+        return None
 
     def _ensure_white_canvas(self) -> None:
         """Keep the exported paper unchanged, independently of the screen frame."""

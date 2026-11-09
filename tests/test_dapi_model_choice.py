@@ -16,12 +16,14 @@ METHOD = 'cellpose_cyto3_dapi_reviewed_v1'
 MODEL = 'cyto3_dapi_reviewed_v1'
 
 
-def test_fluoro_offers_both_models_with_original_reference_defaults(qt_application):
+def test_fluoro_defaults_to_small_nucleus_watershed(qt_application):
     controls = NucleiCountControls('fluoro')
     assert controls.method.findData(METHOD) >= 0
     params = controls.parameters()
-    assert params['method'] == 'cellpose_cyto3'
-    assert (params['diameter_px'], params['min_area_px'], params['cellpose_input']) == (25, 50, 'tile_normalization')
+    assert controls.method.itemData(0) == params['method'] == 'watershed'
+    assert (params['diameter_px'], params['min_area_px'], params['max_area_px']) == (9, 8, 300)
+    controls.set_parameters(dict(method='cellpose_cyto3',diameter_px=25,min_area_px=50,max_area_px=2000))
+    assert controls.parameters()['cellpose_input'] == 'tile_normalization'
     controls.diameter.setValue(31)
     controls.method.setCurrentIndex(controls.method.findData(METHOD))
     assert controls.diameter.value() == 31
@@ -33,7 +35,7 @@ def test_fluoro_offers_both_models_with_original_reference_defaults(qt_applicati
         assert controls.method.currentText() != controls.method.itemText(controls.method.findData('cellpose_cyto3'))
     he = NucleiCountControls('brightfield')
     assert he.method.findData(METHOD) == -1
-    assert he.parameters()['method'] == 'cellpose_nuclei'
+    assert he.parameters()['method'] == 'cellpose_cyto3_he_pale_v1'
     controls.close(); he.close()
 
 
@@ -77,7 +79,7 @@ def test_unrun_method_choices_follow_images_and_project_save(tmp_path, desktop_s
         c.controls.method.setCurrentIndex(c.controls.method.findData(METHOD))
         assert not window._analysis_job_service.is_busy(c.job_key)
         second = panel.import_image(path); second['channels'][0]['name'] = 'DAPI'; c.sync()
-        assert c.controls.method.currentData() == 'cellpose_cyto3'
+        assert c.controls.method.currentData() == 'watershed'
         panel.set_active_image(first['uid']); c.sync()
         assert c.controls.method.currentData() == METHOD
         panel.analysis.setdefault('nuclei_measurements', []).append(dict(
@@ -91,7 +93,7 @@ def test_unrun_method_choices_follow_images_and_project_save(tmp_path, desktop_s
         window.project = Project.load_sfig(archive); c.sync()
         assert c.controls.method.currentData() == METHOD
         c.panel().set_active_image(second['uid']); c.sync()
-        assert c.controls.method.currentData() == 'cellpose_cyto3'
+        assert c.controls.method.currentData() == 'watershed'
     finally:
         window._capture_clean_project_baseline(); window.close(); window.deleteLater(); qt_application.processEvents()
 

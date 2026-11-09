@@ -430,21 +430,17 @@ def test_pending_widget_edit_is_captured_without_dirtying_untouched(tmp_path, mo
         panel.data["active_image_uid"] = "image-a"
         window.data_panel.populate_ihc_import_controls(panel.images(), "image-a")
         window.select_ihc_image("image-a")
-        window.data_panel.set_ihc_guided_mode("expert")
         window.analysis_state.capture_session()
         window._capture_clean_project_baseline()
         assert window.is_project_dirty() is False
-        current = window.data_panel.ihc_analysis_settings()
-        expected = 0.11 if float(current["weak_threshold"]) != 0.11 else 0.22
-        window.data_panel.set_ihc_analysis_settings({**current, "weak_threshold": expected})
-        assert window.data_panel.ihc_analysis_settings()["weak_threshold"] == expected
-        assert window.is_project_dirty() is False
+        window.ihc_workspace.white_balance.edit_spins["brightness"].setValue(11)
+        assert window.is_project_dirty() is True
         controller.maybe_autosave()
         assert _wait_idle(app, controller, lambda: bool(controller.store.list_drafts()))
         restored = controller.store.load_draft(controller.store.list_drafts()[0])
         try:
             restored_panel = next(item for item in restored.panels if getattr(item, "panel_type", "") == "ihc")
-            assert restored_panel.data["analysis_ui_state_by_image"]["image-a"]["expert"]["weak_threshold"] == expected
+            assert restored_panel.active_image()["rgb_display"]["brightness"] == 11
         finally:
             restored.dispose()
     finally:

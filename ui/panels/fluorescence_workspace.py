@@ -52,6 +52,7 @@ from core.plotting.fluoro_render import (
     RGB_COMPOSITE_MODE,
     render_fluorescence_qimage,
     render_single_qimage,
+    rgb_display_channel,
     rgb_interpretation_mode,
 )
 from core.utils.i18n import bind_i18n, retranslate_bound_widgets, retranslate_combo, tr, trf
@@ -172,6 +173,7 @@ class FluorescenceWorkspace(QWidget):
         self._form_i18n_labels: list[QLabel] = []
         self._channel_form_i18n_labels: list[QLabel] = []
         self._channel_widgets: list[tuple[QCheckBox, QDoubleSpinBox, QDoubleSpinBox, QComboBox]] = []
+        self._rgb_display_widgets: list[QWidget] = []
         self.last_count_preview_dialog: CountPreviewDialog | None = None
         self._ai_roi_type: str | None = None
         self._ai_roi_geometry: dict | None = None
@@ -211,7 +213,6 @@ class FluorescenceWorkspace(QWidget):
             (self.import_button, "add_images"),
             (self.remove_button, "remove_selected"),
             (self.merge_selected_button, "merge_selected_channels"),
-            (self.mode_label, "mode"),
             (self.force_split_rgb_button, "force_split_rgb"),
             (self.save_active_image_button, "save_active_image_tiff"),
             (self.lock_display_checkbox, "lock_display_range"),
@@ -391,17 +392,10 @@ class FluorescenceWorkspace(QWidget):
         wrapper.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout = QVBoxLayout(wrapper)
         layout.setContentsMargins(10, 10, 10, 10)
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItem(tr("assisted"), "assisted")
-        self.mode_combo.addItem(tr("one_click"), "one_click")
-        self.mode_combo.addItem(tr("expert"), "expert")
         self.active_image_combo = QComboBox()
         self.active_image_combo.setObjectName("FluorescenceActiveImageCombo")
         self.active_image_combo.currentIndexChanged.connect(self._select_image_from_combo)
         wrapper.setMaximumHeight(150)
-        self.mode_label = QLabel()
-        layout.addWidget(self.mode_label)
-        layout.addWidget(self.mode_combo)
         self.active_image_label = bind_i18n(QLabel(), "active_image")
         layout.addWidget(self.active_image_label)
         layout.addWidget(self.active_image_combo)
@@ -650,7 +644,7 @@ class FluorescenceWorkspace(QWidget):
         self.sample_spot_button = QPushButton("Sample Spot Tool")
         self.sample_spot_button.clicked.connect(lambda: self._set_roi_tool("sample_spot"))
         self.count_algorithm_combo = QComboBox()
-        for method in ('traditional','cellpose_cyto3','log','cellpose_nuclei'):
+        for method in ('log','traditional','cellpose_cyto3','cellpose_nuclei'):
             self.count_algorithm_combo.addItem(tr('spot_method_'+method),method)
         self.count_diameter_spin=QDoubleSpinBox()
         self.count_diameter_spin.setRange(2,1000)
@@ -769,9 +763,9 @@ class FluorescenceWorkspace(QWidget):
         self.ai_sensitivity_spin.setSingleStep(0.1)
         self.ai_sensitivity_spin.setValue(1.0)
         self.ai_backend_combo = QComboBox()
-        self.ai_backend_combo.addItem(tr('local_fluoro_segmentation'), 'local_heuristic')
         self.ai_backend_combo.addItem(tr('cellpose_area_method'), 'cellpose_cyto3')
         self.ai_backend_combo.addItem(tr('membrane_laminin_method'), 'cellpose_cyto3_laminin_final_v1')
+        self.ai_backend_combo.addItem(tr('local_fluoro_segmentation'), 'local_heuristic')
         self.ai_backend_combo.setMinimumWidth(0)
         self.ai_backend_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.ai_backend_combo.setMinimumContentsLength(1)
@@ -1364,6 +1358,7 @@ class FluorescenceWorkspace(QWidget):
         panel_changed = self.panel is not panel or self.canvas.panel is not panel
         if panel_changed:
             self._roi_clear_history.clear()
+            self._clear_ai_roi()
         self.panel = panel
         self.canvas.set_panel(panel, refresh=False)
         should_refresh = panel_changed if refresh is None else refresh
@@ -1451,10 +1446,7 @@ class FluorescenceWorkspace(QWidget):
         for path in paths:
             self.panel.import_image(path)
         self.refresh(refresh_canvas=False)
-        if str(self.mode_combo.currentData() or "").lower() == "one_click":
-            self.set_step(4, refresh=False)
-        else:
-            self.set_step(1, refresh=False)
+        self.set_step(1, refresh=False)
         self._refresh_canvas()
 
     def refresh(self, *, refresh_canvas: bool = True) -> None:
@@ -1463,7 +1455,8 @@ class FluorescenceWorkspace(QWidget):
         self._populate_active_image_selector()
         self._populate_metadata()
         self._populate_channel_controls()
-        self._populate_measure_controls()
+        with QSignalBlocker(self.count_channel_list), QSignalBlocker(self.ai_channel_list):
+            self._populate_measure_controls()
         self._populate_measurements()
         self._populate_count_results()
         self._populate_ai_assisted_results()
@@ -1534,23 +1527,6 @@ class FluorescenceWorkspace(QWidget):
             tr("step_fluoro_export_hint"),
         ]
 
-    def _retranslate_mode_combo(self) -> None:
-        current_data = self.mode_combo.currentData()
-        self.mode_combo.blockSignals(True)
-        labels = {
-            "assisted": tr("assisted"),
-            "one_click": tr("one_click"),
-            "expert": tr("expert"),
-        }
-        for index in range(self.mode_combo.count()):
-            data = str(self.mode_combo.itemData(index) or "")
-            if data in labels:
-                self.mode_combo.setItemText(index, labels[data])
-        target_index = self.mode_combo.findData(current_data)
-        if target_index >= 0:
-            self.mode_combo.setCurrentIndex(target_index)
-        self.mode_combo.blockSignals(False)
-
     def _retranslate_measurement_headers(self) -> None:
         tables = (
             (self.count_table, ("measurement_channel", "measurement_count", "area_px", "measurement_mean_area", "mean_intensity", "spot_count_method", "spot_count_parameters", "spot_count_image")),
@@ -1595,7 +1571,6 @@ class FluorescenceWorkspace(QWidget):
             button.setText(self._step_labels()[index])
         if hasattr(self, "context_stack"):
             self.step_hint.setText(self._step_hints()[self.context_stack.currentIndex()])
-        self._retranslate_mode_combo()
         retranslate_combo(self.roi_black_balance_scope_combo, {"all_channels": tr("all_channels"), "selected_channel": tr("selected_channel")})
         retranslate_combo(self.count_black_balance_scope_combo, {"all_channels": tr("all_channels"), "selected_channel": tr("selected_channel")})
         retranslate_combo(self.count_algorithm_combo,{m:tr('spot_method_'+m) for m in ('traditional','cellpose_cyto3','log','cellpose_nuclei')})
@@ -1627,7 +1602,6 @@ class FluorescenceWorkspace(QWidget):
         self.merge_selected_button.setText(tr("merge_selected_channels"))
         self.save_active_image_button.setText(tr("save_active_image_tiff"))
         self.force_split_rgb_button.setText(tr("force_split_rgb"))
-        self.mode_label.setText(tr("mode"))
         self.add_roi_button.setText("+ " + tr("add_roi"))
         self.clear_roi_button.setText(tr("clear_roi_measurements"))
         self.apply_threshold_button.setText(tr("apply_threshold"))
@@ -1662,7 +1636,6 @@ class FluorescenceWorkspace(QWidget):
         self.export_measurements_checkbox.setText(tr("export_measurements_csv"))
         self.export_source_checkbox.setText(tr("include_source_data"))
         self.export_button.setText(tr("export_figure"))
-        self.mode_label.setText(tr("mode"))
         self.merge_hint_label.setText(tr("merge_hint"))
         self._populate_count_results()
         self._populate_ai_assisted_results()
@@ -1785,6 +1758,7 @@ class FluorescenceWorkspace(QWidget):
                 widget.hide()
                 widget.deleteLater()
         self._channel_widgets.clear()
+        self._rgb_display_widgets.clear()
         self._display_processing_controls = []
         image = self._active_image()
         if not image:
@@ -1812,12 +1786,15 @@ class FluorescenceWorkspace(QWidget):
             else tr("force_split_rgb_tooltip")
         )
         self.view_mode_combo.setEnabled(not auto_single_signal and not rgb_composite)
-        self.lock_display_checkbox.setEnabled(not rgb_composite)
+        self.lock_display_checkbox.setEnabled(True)
         self._sync_layout_mode_combo(image)
         if rgb_composite:
             hint = bind_i18n(QLabel(), "rgb_composite_mode_hint")
             hint.setWordWrap(True)
             self.channel_layout.addWidget(hint)
+            data = self.panel.image_data(str(image['uid']))
+            if data is not None:
+                self._add_rgb_display_controls(rgb_display_channel(data, image))
             self.channel_layout.addStretch(1)
             self.view_mode_combo.blockSignals(True)
             self.view_mode_combo.setCurrentIndex(self.view_mode_combo.findData(str(image.get("view_mode", "merge"))))
@@ -1860,13 +1837,7 @@ class FluorescenceWorkspace(QWidget):
             self._add_i18n_form_row(form, "color", color_combo, self._channel_form_i18n_labels)
             for field in (min_spin, max_spin, color_combo):
                 form.labelForField(field).setMinimumHeight(field.sizeHint().height())
-            from ui.widgets.fluoro_display_controls import FluoroDisplayControls
-            processing = FluoroDisplayControls(channel.get('display_processing'))
-            processing.settings_changed.connect(lambda settings,i=index: self._display_balance.update_processing(i,settings))
-            processing.point_requested.connect(lambda point,i=index: self._display_balance.begin(i,point))
-            processing.setEnabled(not self.lock_display_checkbox.isChecked())
-            form.addRow(processing)
-            self._display_processing_controls.append(processing)
+            self._add_display_processing(form, index, channel.get('display_processing'))
             self.channel_layout.addWidget(row)
             self._channel_widgets.append((visible, min_spin, max_spin, color_combo))
         self.channel_layout.addStretch(1)
@@ -1875,6 +1846,40 @@ class FluorescenceWorkspace(QWidget):
         self.view_mode_combo.blockSignals(True)
         self.view_mode_combo.setCurrentIndex(self.view_mode_combo.findData(str(image.get("view_mode", "merge"))))
         self.view_mode_combo.blockSignals(False)
+
+    def _add_rgb_display_controls(self, channel: dict) -> None:
+        row = bind_i18n(QGroupBox(), 'rgb_display_adjustments', 'title')
+        form = QFormLayout(row)
+        for key, label in (('display_min', 'min'), ('display_max', 'max'),
+                           ('brightness', 'brightness'), ('contrast', 'contrast')):
+            if key.startswith('display_'):
+                spin = QDoubleSpinBox()
+                spin.setRange(0, 1_000_000_000)
+                spin.setDecimals(3)
+            else:
+                spin = QSpinBox()
+                spin.setRange(-100, 100)
+            spin.setObjectName('rgb_' + key)
+            spin.setKeyboardTracking(False)
+            spin.setValue(channel[key])
+            spin.setEnabled(not self.lock_display_checkbox.isChecked())
+            spin.valueChanged.connect(lambda value, k=key: self._update_rgb_display(**{k: value}))
+            self._add_i18n_form_row(form, label, spin, self._channel_form_i18n_labels)
+            form.labelForField(spin).setMinimumHeight(spin.sizeHint().height())
+            self._rgb_display_widgets.append(spin)
+        self._add_display_processing(form, 0, channel.get('display_processing'))
+        self.channel_layout.addWidget(row)
+        from ui.widgets.workflow_forms import compact_sidebar_margins
+        compact_sidebar_margins(self.channel_controls, outer_margin=0)
+
+    def _add_display_processing(self, form: QFormLayout, index: int, settings) -> None:
+        from ui.widgets.fluoro_display_controls import FluoroDisplayControls
+        processing = FluoroDisplayControls(settings)
+        processing.settings_changed.connect(lambda values: self._display_balance.update_processing(index, values))
+        processing.point_requested.connect(lambda point: self._display_balance.begin(index, point))
+        processing.setEnabled(not self.lock_display_checkbox.isChecked())
+        form.addRow(processing)
+        self._display_processing_controls.append(processing)
 
     def _populate_measure_controls(self) -> None:
         image = self._active_image()
@@ -2698,6 +2703,8 @@ class FluorescenceWorkspace(QWidget):
             self._display_balance.cancel()
         for control in getattr(self, '_display_processing_controls', []):
             control.setEnabled(not locked)
+        for widget in self._rgb_display_widgets:
+            widget.setEnabled(not locked)
         for widgets in self._channel_widgets:
             for widget in widgets:
                 widget.setEnabled(not locked)
@@ -2710,7 +2717,15 @@ class FluorescenceWorkspace(QWidget):
         self._sync_preview_channels()
         self._schedule_channel_refresh()
 
+    def _update_rgb_display(self, **updates: Any) -> None:
+        image = self._active_image()
+        if self.panel is None or rgb_interpretation_mode(image) != RGB_COMPOSITE_MODE:
+            return
+        self.panel.update_rgb_display(str(image['uid']), **updates)
+        self._schedule_channel_refresh()
+
     def _set_view_mode(self, view_mode: str) -> None:
+        self._display_balance.cancel()
         image = self._active_image()
         if self.panel is None or not image:
             return
@@ -2729,7 +2744,6 @@ class FluorescenceWorkspace(QWidget):
                 self.view_mode_combo.setCurrentIndex(self.view_mode_combo.findData(image.get('view_mode', 'merge')))
 
     def _select_preview_channel(self, choice) -> None:
-        self._display_balance.cancel()
         image = self._active_image()
         if not image or self.canvas.current_step not in (0, 1, 2):
             return
@@ -3394,7 +3408,16 @@ class FluorescenceWorkspace(QWidget):
             self.canvas.set_roi_mode("")
             return
         if roi_type == "black_balance":
-            self.panel.set_black_balance_roi(str(image.get("uid")), dict(geometry), scope=self._current_black_balance_scope())
+            scope = self._current_black_balance_scope()
+            sample = dict(geometry)
+            if scope == "selected_channel" and source_channel is None:
+                selected = (self._selected_channel_indices(self.count_channel_list) if self.measure_mode == "spot_count"
+                            else [self.roi_channel_combo.currentData()])
+                if len(selected) != 1 or selected[0] is None:
+                    self.step_hint.setText(tr("black_balance_choose_channel"))
+                    return
+                sample["source_channel_index"] = selected[0]
+            self.panel.set_black_balance_roi(str(image.get("uid")), sample, scope=scope)
             self.canvas.set_roi_mode("")
             self.refresh()
             self.step_hint.setText(tr("black_balance_active"))
@@ -3686,6 +3709,7 @@ class FluorescenceWorkspace(QWidget):
         if not uid or uid == str(self.panel.data.get("active_image_uid", "")):
             return
         self.panel.set_active_image(uid)
+        self._clear_ai_roi()
         self.refresh()
         target = str(identity or "")
         for table in (self.count_table, self.ai_results_table, self.ai_summary_stats_table, self.measurement_table):
@@ -3825,10 +3849,10 @@ class FluorescenceWorkspace(QWidget):
             self.threshold_value_spin.setValue(float(payload["manual_value"]))
         if "min_area_px" in payload and payload["min_area_px"] is not None:
             self.count_min_area_spin.setValue(int(payload["min_area_px"]))
-        if "algorithm" in payload:
-            index = self.count_algorithm_combo.findData(payload["algorithm"])
-            if index >= 0:
-                self.count_algorithm_combo.setCurrentIndex(index)
+        algorithm = payload.get("algorithm", "traditional" if "method" in payload else None)
+        index = self.count_algorithm_combo.findData(algorithm)
+        if index >= 0:
+            self.count_algorithm_combo.setCurrentIndex(index)
         if "diameter_px" in payload and payload["diameter_px"] is not None:
             self.count_diameter_spin.setValue(float(payload["diameter_px"]))
         if "sensitivity" in payload and payload["sensitivity"] is not None:
@@ -3846,7 +3870,7 @@ class FluorescenceWorkspace(QWidget):
 
     def set_ai_analysis_settings(self, settings: dict) -> None:
         payload = dict(settings or {})
-        index = self.ai_backend_combo.findData(payload.get('backend', 'local_heuristic'))
+        index = self.ai_backend_combo.findData(payload.get('backend', 'local_heuristic' if payload else None))
         self.ai_backend_combo.setCurrentIndex(max(0, index))
         self.ai_cellpose_diameter_spin.setValue(float(payload.get('cellpose_diameter_px', 40.)))
         if "detection_sensitivity" in payload and payload["detection_sensitivity"] is not None:

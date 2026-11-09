@@ -5,7 +5,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import numpy as np
 import pytest
 import tifffile
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
@@ -222,6 +222,24 @@ def test_bad_reference_and_wrong_split_channel_leave_state_unchanged(workspace):
     assert ws.canvas.view.roi_mode == ''
 
 
+def test_black_point_switches_single_preview_to_the_button_channel(workspace):
+    ws, raw, _ = workspace
+    image = ws.panel.active_image()
+    ws._select_preview_channel(0)
+    controls(ws).black_point_button.click()
+    ws._add_drawn_roi('display_black_point', {'x': 1, 'y': 1, 'w': 10, 'h': 10, 'source_channel_index': 0})
+    first_channel = deepcopy(image['channels'][0])
+
+    ws._display_processing_controls[1].black_point_button.click()
+    assert ws.canvas.single_channel_index == 1
+    assert ws.canvas._image_items[0].data(1) == 1
+    ws._add_drawn_roi('display_black_point', {'x': 1, 'y': 1, 'w': 10, 'h': 10, 'source_channel_index': 1})
+
+    assert image['channels'][1]['display_processing']['black_point'] == pytest.approx(6000 / 65535)
+    assert image['channels'][0] == first_channel
+    np.testing.assert_array_equal(ws.panel.image_data(image['uid']), raw)
+
+
 def test_display_only_changes_still_work_during_analysis(workspace):
     ws, _, _ = workspace
     c = controls(ws)
@@ -231,3 +249,35 @@ def test_display_only_changes_still_work_during_analysis(workspace):
     c.black_point_button.click()
     assert ws._display_balance.pending is None
     ws._busy_analysis_operations.clear()
+
+
+def test_measurement_drag_does_not_cross_images_or_split_channels(workspace):
+    ws, _, path = workspace
+    ws.set_step(2)
+    ws._set_measure_mode('roi_intensity')
+    ws._set_view_mode('split')
+    first, second = ws.canvas._image_items[:2]
+    spanning = QRectF(first.sceneBoundingRect().center(), second.sceneBoundingRect().center()).normalized().adjusted(-2, -2, 2, 2)
+    assert ws.canvas._map_rect_to_image_geometry('rectangle', spanning) is None
+    start, end = first.sceneBoundingRect().center(), second.sceneBoundingRect().center()
+    assert ws.canvas._map_line_to_image_geometry(dict(x1=start.x(), y1=start.y(), x2=end.x(), y2=end.y())) is None
+    assert ws.canvas._map_line_to_image_geometry(dict(x1=-20, y1=-20, x2=-10, y2=-10)) is None
+
+    ws._select_preview_channel(0)
+    item = ws.canvas._image_items[0]
+    view = ws.canvas.view
+    start = view.mapFromScene(item.mapToScene(QPointF(5, 5)))
+    end = view.mapFromScene(item.mapToScene(QPointF(15, 15)))
+    QTest.mousePress(view.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    assert view._temp_roi_item is not None
+    first_uid = ws.panel.active_image()['uid']
+    ws.panel.import_image(path)
+    ws.refresh()
+    QTest.mouseRelease(view.viewport(), Qt.MouseButton.LeftButton, pos=end)
+    assert view._temp_roi_item is None
+    assert not ws.panel.active_image().get('measurements')
+
+    ws._ai_roi_type = 'rectangle'
+    ws._ai_roi_geometry = {'x': 5, 'y': 5, 'w': 10, 'h': 10}
+    ws._activate_record_image({'image_uid': first_uid}, '')
+    assert ws._ai_roi_geometry is None
