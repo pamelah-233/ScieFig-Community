@@ -19,9 +19,9 @@ def test_build_script_requires_public_key_and_uses_pyinstaller_onedir() -> None:
     assert "config" in script
     assert "journal_presets.json" in script
     assert "ScieFig_R10_Activation_Guide.txt" in script
-    assert "1.2.3" in script
-    assert "filevers=(1, 2, 3, 0)" in script
-    assert "prodvers=(1, 2, 3, 0)" in script
+    assert "1.2.5" in script
+    assert "filevers=(1, 2, 5, 0)" in script
+    assert "prodvers=(1, 2, 5, 0)" in script
     assert ".scratch" in script
     assert "--icon" in script
     assert "sciefig_app_icon.ico" in script
@@ -47,8 +47,8 @@ def test_inno_setup_script_consumes_dist_only_and_registers_shortcuts() -> None:
 
     assert "AppId={{0C73A76E-0E1D-49D2-A2D1-9809DE8926BE}" in script
     assert "AppName=ScieFig" in script
-    assert "AppVersion=1.2.3" in script
-    assert "OutputBaseFilename=ScieFig_1.2.3_Setup" in script
+    assert "AppVersion=1.2.5" in script
+    assert "OutputBaseFilename=ScieFig_1.2.5_Windows_Setup" in script
     assert "DefaultDirName={autopf}\\ScieFig" in script
     assert "#include FilesList" in script
     listing = (script_path.parent / 'installer_files.py').read_text(encoding='utf-8')
@@ -137,7 +137,7 @@ def test_r10_keeps_r095_license_channel_and_machine_code_formula() -> None:
     assert 'LICENSE_CHANNEL: Final[str] = "R0.95"' in licensing
     assert 'f"{PRODUCT_NAME}|{LICENSE_CHANNEL}|{normalized}"' in licensing
     assert "SOFTWARE\\Microsoft\\Cryptography" in licensing
-    assert 'SOFTWARE_VERSION = "1.2.3"' in constants
+    assert 'SOFTWARE_VERSION = "1.2.5"' in constants
     assert "skip_signature" in licensing
     assert "install_license_file" in licensing
     assert "self.validate_license_file(source_path)" in licensing

@@ -51,7 +51,7 @@ def verify_application(folder, flavor, cache, output):
     pyz = archive.open_embedded_archive(next(name for name, entry in archive.toc.items() if entry[-1] == 'z'))
     constants = {}
     exec(pyz.extract('core.constants'), constants)
-    assert constants['SOFTWARE_VERSION'] == '1.2.3'
+    assert constants['SOFTWARE_VERSION'] == '1.2.5'
     if flavor == 'english':
         translations = {'__name__': 'candidate_i18n'}
         exec(pyz.extract('core.utils.i18n'), translations)
@@ -78,7 +78,7 @@ def verify_application(folder, flavor, cache, output):
         (output / (name + '-stdout.txt')).write_text(result.stdout, encoding='utf-8')
         (output / (name + '-stderr.txt')).write_text(result.stderr, encoding='utf-8')
         fault = output / (name + '-fault.txt')
-        if result.returncode != 0 or not marker.is_file() or marker.read_text() != 'main-window-closed':
+        if result.returncode != 0 or not marker.is_file() or marker.read_text() != 'main-window-closed' or not fault.is_file() or fault.stat().st_size:
             details = fault.read_text(encoding='utf-8', errors='replace') if fault.exists() else ''
             raise RuntimeError(f'{flavor} {name} startup check failed (exit {result.returncode}):\n'
                                f'{result.stderr}\n{details}')
@@ -130,7 +130,7 @@ def verify_application(folder, flavor, cache, output):
                              '--device', 'cpu', '--min-size', '8'], capture_output=True, text=True, timeout=180)
     assert result.returncode == 0, result.stderr
     assert json.loads(target.with_suffix('.json').read_text())['model'] == 'nuclei'
-    report = dict(version='1.2.3', flavor=flavor, startup=smoke, models=tested,
+    report = dict(version='1.2.5', flavor=flavor, startup=smoke, models=tested,
                   optional_gpu_component=model_runtime.RUNTIME_ID, optional_worker_cpu_execution=True,
                   cuda_execution='Requires the separate NVIDIA hardware check')
     (output / 'checks.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
