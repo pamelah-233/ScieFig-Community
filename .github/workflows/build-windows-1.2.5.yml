@@ -97,6 +97,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Application freeze failed' }
           $version=(Get-Item build/windows125/ScieFig_R10/ScieFig_R10.exe).VersionInfo
           if ($version.FileVersion -ne '1.2.5' -or $version.ProductVersion -ne '1.2.5') { throw 'Executable version mismatch' }
+      - name: Verify the newly frozen application exits cleanly
+        run: |
+          .venv/Scripts/python.exe packaging/windows_candidate_checks.py verify-startup build/windows125/ScieFig_R10/ScieFig_R10.exe build/checks/frozen-startup
+          if ($LASTEXITCODE) { throw 'Frozen Windows shutdown check failed' }
       - name: Verify modern and legacy ND2 in the packaged runtime
         run: |
           .venv/Scripts/python.exe packaging/verify_frozen_nd2.py build/windows125/ScieFig_R10/ScieFig_R10.exe build/checks/nd2

@@ -37,6 +37,29 @@ def code_names(code):
     return names
 
 
+def verify_startup(exe, output):
+    output.mkdir(parents=True, exist_ok=True)
+    smoke = []
+    for name, arguments in (('main', []), ('wb', ['--wb-demo'])):
+        marker = output / (name + '-ok.txt')
+        env = dict(os.environ, QT_QPA_PLATFORM='offscreen', SCIEFIG_RELEASE_SMOKE='1',
+                   SCIEFIG_RELEASE_SMOKE_MARKER=str(marker),
+                   SCIEFIG_RELEASE_SMOKE_LOG=str(output / (name + '-fault.txt')),
+                   APPDATA=str(output / 'roaming'), LOCALAPPDATA=str(output / 'local'))
+        Path(env['APPDATA']).mkdir(exist_ok=True)
+        Path(env['LOCALAPPDATA']).mkdir(exist_ok=True)
+        result = subprocess.run([str(exe), *arguments], cwd=exe.parent, env=env, capture_output=True, text=True, timeout=120)
+        (output / (name + '-stdout.txt')).write_text(result.stdout, encoding='utf-8')
+        (output / (name + '-stderr.txt')).write_text(result.stderr, encoding='utf-8')
+        fault = output / (name + '-fault.txt')
+        if result.returncode != 0 or not marker.is_file() or marker.read_text() != 'main-window-closed' or not fault.is_file() or fault.stat().st_size:
+            details = fault.read_text(encoding='utf-8', errors='replace') if fault.exists() else ''
+            raise RuntimeError(f'{exe.name} {name} startup check failed (exit {result.returncode}):\n'
+                               f'{result.stderr}\n{details}')
+        smoke.append(name)
+    return smoke
+
+
 def verify_application(folder, flavor, cache, output):
     import numpy as np
     from PyInstaller.archive.readers import CArchiveReader
@@ -65,24 +88,7 @@ def verify_application(folder, flavor, cache, output):
         names = code_names(pyz.extract('ui.main_window'))
         assert not names.intersection({'language_zh_button', 'language_en_button'})
 
-    smoke = []
-    for name, arguments in (('main', []), ('wb', ['--wb-demo'])):
-        marker = output / (name + '-ok.txt')
-        env = dict(os.environ, QT_QPA_PLATFORM='offscreen', SCIEFIG_RELEASE_SMOKE='1',
-                   SCIEFIG_RELEASE_SMOKE_MARKER=str(marker),
-                   SCIEFIG_RELEASE_SMOKE_LOG=str(output / (name + '-fault.txt')),
-                   APPDATA=str(output / 'roaming'), LOCALAPPDATA=str(output / 'local'))
-        Path(env['APPDATA']).mkdir(exist_ok=True)
-        Path(env['LOCALAPPDATA']).mkdir(exist_ok=True)
-        result = subprocess.run([str(exe), *arguments], cwd=folder, env=env, capture_output=True, text=True, timeout=120)
-        (output / (name + '-stdout.txt')).write_text(result.stdout, encoding='utf-8')
-        (output / (name + '-stderr.txt')).write_text(result.stderr, encoding='utf-8')
-        fault = output / (name + '-fault.txt')
-        if result.returncode != 0 or not marker.is_file() or marker.read_text() != 'main-window-closed' or not fault.is_file() or fault.stat().st_size:
-            details = fault.read_text(encoding='utf-8', errors='replace') if fault.exists() else ''
-            raise RuntimeError(f'{flavor} {name} startup check failed (exit {result.returncode}):\n'
-                               f'{result.stderr}\n{details}')
-        smoke.append(name)
+    smoke = verify_startup(exe, output)
 
     bundled = folder / 'cellpose'
     model_runtime.runtime_cache = lambda: cache
@@ -144,6 +150,9 @@ if __name__ == '__main__':
     prepare.add_argument('archive', type=Path)
     prepare.add_argument('descriptor', type=Path)
     prepare.add_argument('cache', type=Path)
+    startup = sub.add_parser('verify-startup')
+    startup.add_argument('executable', type=Path)
+    startup.add_argument('output', type=Path)
     verify = sub.add_parser('verify-app')
     verify.add_argument('folder', type=Path)
     verify.add_argument('flavor', choices=('full', 'cpu', 'english'))
@@ -152,5 +161,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.command == 'prepare-gpu':
         prepare_gpu(args.archive.resolve(), args.descriptor.resolve(), args.cache.resolve())
+    elif args.command == 'verify-startup':
+        print(verify_startup(args.executable.resolve(), args.output.resolve()), flush=True)
     else:
         verify_application(args.folder.resolve(), args.flavor, args.cache.resolve(), args.output.resolve())
