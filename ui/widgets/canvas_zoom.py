@@ -84,8 +84,7 @@ def set_graphics_view_zoom(view, factor: float) -> float:
 def fit_graphics_view_to_rect(view, rect: QRectF, margin_px: int = FIT_VIEWPORT_MARGIN_PX) -> float:
     if rect is None or rect.isNull() or rect.width() <= 0 or rect.height() <= 0:
         return graphics_view_zoom_factor(view)
-    viewport = view.viewport()
-    visible = viewport.rect() if viewport is not None else view.rect()
+    visible = view.maximumViewportSize()
     if visible.width() <= 0 or visible.height() <= 0:
         view.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
         return graphics_view_zoom_factor(view)

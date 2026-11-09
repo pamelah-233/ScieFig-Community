@@ -49,8 +49,7 @@ def main() -> int:
     global _windows_application
     app = ScieFigApplication(sys.argv)
     if sys.platform == 'win32' and isinstance(app, QApplication):
-        # Retain Qt until the process boundary: Windows Qt teardown
-        # crashes after a successfully closed main window (0xC0000005).
+        # Keep Qt alive through Windows process shutdown after window cleanup.
         _windows_application = app
     app.setOrganizationName("ScieFig")
     app.setApplicationName("ScieFig")
@@ -114,6 +113,9 @@ def main() -> int:
         sys.excepthook = previous_excepthook
         if isinstance(app, QApplication):
             from PyQt6 import sip
+            from PyQt6.QtCore import QThreadPool
+            # Analysis and recovery jobs can still be unwinding after the window closes.
+            QThreadPool.globalInstance().waitForDone()
             app.project_window = None
             if window is not None and not sip.isdeleted(window):
                 sip.delete(window)
@@ -127,11 +129,4 @@ if __name__ == "__main__":
         from ui.dialogs.spatial_demo import run_demo
         run_demo(load_qss(resolve_resources_dir()))
     exit_code = main()
-    if _windows_application is not None:
-        # main() has already completed window/worker cleanup and save prompts.
-        # Avoid the failing native QApplication finalizer in the frozen build.
-        for stream in (sys.stdout, sys.stderr):
-            if stream is not None:
-                stream.flush()
-        os._exit(exit_code)
     raise SystemExit(exit_code)

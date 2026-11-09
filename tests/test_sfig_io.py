@@ -14,8 +14,7 @@ from PyQt6.QtWidgets import QApplication
 
 from core.constants import SFIG_REQUIRED_FILES
 from core.image_analysis.brightfield_guided import (
-    BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION,
-    BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION,
+    BRIGHTFIELD_AUTO_MAPPING_VERSION,
 )
 from core.models import BrightfieldPanel, ExternalImagePanel, FluorescencePanel, IHCPanel, Project, QPCRPanel, WesternBlotPanel
 from core.models.composer import ComposerLayout
@@ -802,7 +801,6 @@ def test_sfig_load_restores_assisted_brightfield_threshold_bias_metadata_and_has
     record = panel.import_image(source_path, group="Control", stain_type="H&E")
     measurement = panel.auto_analyze_he(
         image_uid=record["uid"],
-        guided_mode="assisted",
         settings={
             "sensitivity": "low",
             "cleanup_level": "high",
@@ -820,20 +818,17 @@ def test_sfig_load_restores_assisted_brightfield_threshold_bias_metadata_and_has
     restored_panel = next(item for item in restored.panels if isinstance(item, BrightfieldPanel))
     restored_measurement = restored_panel.analysis["brightfield_measurements"][0]
 
-    assert restored_measurement["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert restored_measurement["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
+    assert restored_measurement["guided_mapping_version"] == BRIGHTFIELD_AUTO_MAPPING_VERSION
+    assert restored_measurement["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_AUTO_MAPPING_VERSION
     assert restored_measurement["guided_effective_settings_hash"] == measurement["guided_effective_settings_hash"]
     assert restored_measurement["guided_slider_values"] == measurement["guided_slider_values"]
-    assert restored_measurement["analysis_metadata"]["assisted_threshold_bias"] == 1
-    assert restored_measurement["analysis_metadata"]["assisted_threshold_bias_active"] is True
-    assert restored_measurement["analysis_metadata"]["assisted_threshold_bias_inactive_reason"] is None
-    assert restored_measurement["analysis_metadata"]["assisted_small_region_filter_bias"] == 2
-    assert restored_measurement["analysis_metadata"]["assisted_small_region_filter_mapping_version"] == (
-        BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION
-    )
-    assert restored_measurement["analysis_metadata"]["assisted_effective_min_area_px"] == measurement["analysis_metadata"]["assisted_effective_min_area_px"]
-    assert restored_panel.data["guided_state"]["assisted_threshold_bias"] == 1
-    assert restored_panel.data["guided_state"]["assisted_small_region_filter_bias"] == 2
+    assert restored_measurement["guided_slider_values"]["threshold_bias"] == 1
+    assert restored_measurement["guided_slider_values"]["threshold_bias_active"] is True
+    assert restored_measurement["guided_slider_values"]["threshold_bias_inactive_reason"] is None
+    assert restored_measurement["guided_slider_values"]["small_region_filter_bias"] == 2
+    assert restored_measurement["guided_slider_values"]["small_region_filter_effective_min_area_px"] == measurement["guided_slider_values"]["small_region_filter_effective_min_area_px"]
+    assert restored_panel.data["guided_state"]["threshold_bias"] == 1
+    assert restored_panel.data["guided_state"]["small_region_filter_bias"] == 2
     assert not restored_panel.render_preview(40, 30, dpi=150).isNull()
     app.processEvents()
 

@@ -264,12 +264,15 @@ def _read_nd2(source: Path) -> ImageImportResult:
                     axes = "".join(str(axis).upper() for axis in sizes.keys())
             channel_names = _parse_nd2_channel_names(metadata_obj)
             voxel_sizes = _read_nd2_voxel_size_um(handle)
+            # A frame can be a view of a mapping that ND2File closes on exit.
+            data = normalize_to_cyx(raw, axes=axes)
+            if np.shares_memory(data, raw):
+                data = data.copy()
     except Exception as exc:
         raise ValueError(
             f"Could not open ND2 image '{source.name}'. Export the file to TIFF/OME-TIFF and import that instead."
         ) from exc
 
-    data = normalize_to_cyx(raw, axes=axes)
     metadata = _base_metadata(source, data, "ND2", "CYX")
     metadata.update(_full_resolution_metadata(data))
     metadata.update(voxel_sizes)

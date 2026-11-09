@@ -62,6 +62,44 @@ def render_original_rgb_qimage(data: np.ndarray) -> QImage:
     return _rgb_array_to_qimage(rgb)
 
 
+def rgb_display_channel(data: np.ndarray, image_record: dict[str, Any]) -> dict[str, Any]:
+    return {"display_min": 0.0, "display_max": rgb_sample_maximum(data),
+            "brightness": 0, "contrast": 0, **(image_record.get("rgb_display") or {})}
+
+
+def rgb_display_intensity(data: np.ndarray, display: dict[str, Any]) -> np.ndarray:
+    channel = rgb_display_channel(data, {'rgb_display': display})
+    normalized = _normalize_channel(np.max(data[:3], axis=0), float(channel['display_min']),
+                                    float(channel['display_max']),
+                                    clip=not display_points_active(channel.get('display_processing')))
+    intensity = apply_display_optimization(normalized, channel.get('display_processing'))
+    if channel['brightness'] or channel['contrast']:
+        intensity = np.clip((intensity - .5) * (1 + channel['contrast'] / 100)
+                            + .5 + channel['brightness'] / 100, 0, 1)
+    return np.rint(intensity * 255).astype(np.uint8)
+
+
+def render_rgb_display_qimage(data: np.ndarray, display: dict[str, Any] | None = None) -> QImage:
+    if not display:
+        return render_original_rgb_qimage(data)
+    channel = rgb_display_channel(data, {'rgb_display': display})
+    low, high = float(channel["display_min"]), float(channel["display_max"])
+    brightness, contrast = channel["brightness"], channel["contrast"]
+    processing = channel.get("display_processing")
+    if (low == 0 and high == rgb_sample_maximum(data) and not brightness and not contrast
+            and not display_processing_active(processing)):
+        return render_original_rgb_qimage(data)
+
+    peak = np.max(data[:3], axis=0).astype(np.float32, copy=False)
+    intensity = rgb_display_intensity(data, display).astype(np.float32)
+    # Apply one gain per pixel to all three samples to preserve its hue.
+    gain = np.divide(intensity, peak, out=np.zeros_like(peak), where=peak > 0)
+    rgb = np.empty((*peak.shape, 3), dtype=np.uint8)
+    for index in range(3):
+        rgb[:, :, index] = np.where(peak > 0, np.rint(data[index] * gain).clip(0, 255), intensity)
+    return apply_rgb_sample_coverage(_rgb_array_to_qimage(rgb), data)
+
+
 def render_fluorescence_qimage(
     data: np.ndarray,
     image_record: dict[str, Any] | None,
@@ -75,7 +113,9 @@ def render_fluorescence_qimage(
     view = str(view_mode if view_mode is not None else (image_record or {}).get("view_mode") or "merge")
     forced = rgb_interpretation_mode(image_record) == FORCED_RGB_SPLIT_MODE
     identity_merge = forced and view == "merge" and channel is None and _rgb_components_are_identity(data,channels)
-    if should_render_original_rgb(image_record, view, channel) or identity_merge:
+    if should_render_original_rgb(image_record, view, channel):
+        return render_rgb_display_qimage(data, (image_record or {}).get('rgb_display'))
+    if identity_merge:
         return render_original_rgb_qimage(data)
     merge = merge_fn or render_merge_qimage
     single = single_fn or render_single_qimage

@@ -28,20 +28,13 @@ from core.image_analysis import (
     validate_overlay_result,
 )
 from core.image_analysis.brightfield_guided import (
-    BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION,
-    BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION,
-    BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION,
     BRIGHTFIELD_GUIDED_PREVIEW_MATCH_STATUS,
     BRIGHTFIELD_GUIDED_PREVIEW_STALE_STATUS,
-    apply_brightfield_assisted_small_region_filter_bias,
-    apply_brightfield_assisted_threshold_bias,
-    apply_brightfield_foolproof_threshold_bias,
-    build_brightfield_assisted_postprocess_slider_values,
-    build_brightfield_foolproof_slider_values,
+    apply_brightfield_small_region_filter_bias,
+    apply_brightfield_guided_threshold_bias,
+    BRIGHTFIELD_AUTO_MAPPING_VERSION,
+    build_brightfield_auto_slider_values,
     neutral_brightfield_guided_slider_values,
-    normalize_brightfield_assisted_small_region_filter_bias,
-    normalize_brightfield_assisted_threshold_bias,
-    normalize_brightfield_foolproof_threshold_bias,
     package_brightfield_guided_measurement_metadata,
 )
 from core.image_analysis.he_fiber_area import (
@@ -76,23 +69,6 @@ from core.utils.time import utc_now_iso
 ANALYSIS_BACKEND_NAME = "sciefig.image_analysis"
 BRIGHTFIELD_BATCH_THRESHOLD_PARAM = "a_min"
 BRIGHTFIELD_BATCH_LOCK_SOURCE_MODE_KEY = "batch_lock_source_mode"
-BRIGHTFIELD_FOOLPROOF_METADATA_KEYS = (
-    "foolproof_threshold_bias",
-    "foolproof_delta_a_min",
-    "foolproof_threshold_bias_mapping_version",
-    "foolproof_baseline_a_min",
-    "foolproof_threshold_bias_active",
-    "foolproof_threshold_bias_inactive_reason",
-)
-BRIGHTFIELD_ASSISTED_METADATA_KEYS = (
-    "assisted_threshold_bias",
-    "assisted_threshold_bias_active",
-    "assisted_threshold_bias_inactive_reason",
-    "assisted_small_region_filter_bias",
-    "assisted_small_region_filter_mapping_version",
-    "assisted_baseline_min_area_px",
-    "assisted_effective_min_area_px",
-)
 
 
 BRIGHTFIELD_OTHER_STAIN_LABEL = "Other high-contrast stain"
@@ -163,7 +139,6 @@ def default_analysis_settings() -> dict[str, Any]:
         "max_object_area_px": 0,
         "he_fiber_foreground_sensitivity": HE_FIBER_DEFAULT_FOREGROUND_SENSITIVITY,
         "he_fiber_splitting_sensitivity": HE_FIBER_DEFAULT_SPLITTING_SENSITIVITY,
-        "he_fiber_segmentation_method": HE_FIBER_DEFAULT_METHOD,
     }
 
 
@@ -171,9 +146,8 @@ def default_guided_state() -> dict[str, Any]:
     return {
         "guided_mode": "foolproof",
         "task_profile": BRIGHTFIELD_HE_PROFILE.to_dict(),
-        "foolproof_threshold_bias": 0,
-        "assisted_threshold_bias": 0,
-        "assisted_small_region_filter_bias": 0,
+        "threshold_bias": 0,
+        "small_region_filter_bias": 0,
         "sensitivity": str(BRIGHTFIELD_HE_PROFILE.default_settings.get("sensitivity", "medium")),
         "cleanup_level": str(BRIGHTFIELD_HE_PROFILE.default_settings.get("cleanup_level", "low")),
         "overlay_opacity": float(BRIGHTFIELD_HE_PROFILE.default_settings.get("overlay_opacity", 0.35)),
@@ -398,9 +372,9 @@ class BrightfieldPanel(BasePanel):
         return self._read_raster(Path(str(image_record.get("source_path", ""))))
 
     def display_qimage(self, image_uid: str | None = None) -> QImage:
-        from core.plotting.histology_display import white_balanced_qimage
+        from core.plotting.histology_processing import processed_histology_qimage
         record=self._resolve_image_record(image_uid)
-        return white_balanced_qimage(self.source_qimage(record['uid']),record.get('display_white_balance'))
+        return processed_histology_qimage(self.source_qimage(record['uid']), record)
 
     def set_image_roi(self, image_uid: str, roi_type: str, coordinates_px: dict[str, Any]) -> dict[str, Any]:
         image_record = self._resolve_image_record(image_uid)
@@ -443,7 +417,7 @@ class BrightfieldPanel(BasePanel):
         image_record = self.active_image()
         if image_record is None:
             raise ValueError("Brightfield panel has no active image to render.")
-        image = self._read_raster(Path(str(image_record.get("source_path", ""))))
+        image = self.display_qimage(image_record['uid'])
         target_size = target_pixel_size(target_width_mm, target_height_mm, dpi)
         return fit_qimage_to_size(image, target_size, QColor("white"))
 
@@ -531,6 +505,7 @@ class BrightfieldPanel(BasePanel):
         """Independent H&E Fiber Area path, kept in the legacy AI collection for compatibility."""
         image_record, rgb = self._load_image_rgb(image_uid)
         merged_settings = self._merge_analysis_settings(settings)
+        merged_settings.setdefault("he_fiber_segmentation_method", HE_FIBER_DEFAULT_METHOD)
         roi_snapshot = self._resolve_roi_snapshot(image_record, roi)
         roi_mask = self._build_roi_mask(rgb.shape[:2], roi_snapshot)
         started_at = perf_counter()
@@ -919,131 +894,64 @@ class BrightfieldPanel(BasePanel):
 
     def _resolve_he_auto_analysis_plan(
         self,
-        image_uid: str | None = None,
         *,
+        image_uid: str | None = None,
         settings: dict[str, Any] | None = None,
-        guided_mode: str = "foolproof",
     ) -> dict[str, Any]:
         image_record, rgb = self._load_image_rgb(image_uid)
         guided_state = self._merge_guided_state(self.data.get("guided_state"))
-        normalized_guided_mode = _normalize_guided_mode(guided_mode)
-        incoming_settings = dict(settings or {})
-        if normalized_guided_mode == "assisted":
-            requested_threshold_bias = normalize_brightfield_assisted_threshold_bias(
-                incoming_settings.get("threshold_bias", guided_state.get("assisted_threshold_bias", 0))
-            )
-            requested_small_region_filter_bias = normalize_brightfield_assisted_small_region_filter_bias(
-                incoming_settings.get(
-                    "small_region_filter_bias",
-                    guided_state.get("assisted_small_region_filter_bias", 0),
-                )
-            )
-        else:
-            requested_threshold_bias = normalize_brightfield_foolproof_threshold_bias(
-                incoming_settings.get("threshold_bias", guided_state.get("foolproof_threshold_bias", 0))
-            )
-            requested_small_region_filter_bias = 0
-
-        if normalized_guided_mode == "assisted":
-            sensitivity = str(incoming_settings.get("sensitivity", guided_state.get("sensitivity", "medium")))
-            cleanup_level = str(incoming_settings.get("cleanup_level", guided_state.get("cleanup_level", "low")))
-        else:
-            sensitivity = "medium"
-            cleanup_level = "low"
-
-        auto_result = estimate_he_auto_parameters(
-            rgb,
-            sensitivity=sensitivity,
-            cleanup_level=cleanup_level,
-        )
+        incoming = dict(settings or {})
+        auto_result = estimate_he_auto_parameters(rgb, sensitivity="medium", cleanup_level="low")
         batch_state_payload = dict(guided_state.get("batch_threshold_state") or {})
         batch_state = BatchThresholdState.from_dict(batch_state_payload)
         if not batch_state.task_id:
             batch_state.task_id = BRIGHTFIELD_HE_PROFILE.task_id
 
-        effective_thresholds = dict(auto_result.recommended_thresholds)
-        threshold_source = "image_auto"
-        threshold_method = str(auto_result.threshold_method)
-        threshold_bias_active = normalized_guided_mode in {"foolproof", "assisted"}
-        threshold_bias_inactive_reason: str | None = None
-        threshold_bias_result = (
-            apply_brightfield_assisted_threshold_bias(
-                effective_thresholds.get(BRIGHTFIELD_BATCH_THRESHOLD_PARAM, 0.0),
-                requested_threshold_bias,
-            )
-            if normalized_guided_mode == "assisted"
-            else apply_brightfield_foolproof_threshold_bias(
-                effective_thresholds.get(BRIGHTFIELD_BATCH_THRESHOLD_PARAM, 0.0),
-                requested_threshold_bias,
-            )
+        thresholds = dict(auto_result.recommended_thresholds)
+        threshold_bias = apply_brightfield_guided_threshold_bias(
+            thresholds.get(BRIGHTFIELD_BATCH_THRESHOLD_PARAM, 0.0),
+            incoming.get("threshold_bias", guided_state["threshold_bias"]),
         )
-        if batch_state.locked and batch_state.batch_threshold is not None and batch_state.task_id == BRIGHTFIELD_HE_PROFILE.task_id:
-            effective_thresholds[BRIGHTFIELD_BATCH_THRESHOLD_PARAM] = float(batch_state.batch_threshold)
-            threshold_source = "batch_locked"
-            threshold_method = str(batch_state.batch_threshold_method or threshold_method)
-            threshold_bias_active = False
-            threshold_bias_inactive_reason = "batch_threshold_locked"
-        elif normalized_guided_mode in {"foolproof", "assisted"}:
-            effective_thresholds[BRIGHTFIELD_BATCH_THRESHOLD_PARAM] = float(threshold_bias_result["adjusted_a_min"])
-
-        baseline_min_area_px = int(auto_result.recommended_min_area or 0)
-        small_region_filter_result = (
-            apply_brightfield_assisted_small_region_filter_bias(
-                baseline_min_area_px,
-                requested_small_region_filter_bias,
-            )
-            if normalized_guided_mode == "assisted"
-            else {
-                "small_region_filter_bias": 0,
-                "baseline_min_area_px": baseline_min_area_px,
-                "min_area_scale_factor": 1.0,
-                "effective_min_area_px": baseline_min_area_px,
-            }
+        locked = (
+            batch_state.locked
+            and batch_state.batch_threshold is not None
+            and batch_state.task_id == BRIGHTFIELD_HE_PROFILE.task_id
         )
-        effective_settings = self._merge_analysis_settings(
-            {
-                **effective_thresholds,
-                "min_object_area_px": int(small_region_filter_result["effective_min_area_px"]),
-                "tissue_mask_enabled": bool(auto_result.recommended_tissue_mask_settings.get("enabled", False)),
-                "tissue_mask_value_threshold": auto_result.recommended_tissue_mask_settings.get("value_threshold"),
-                "tissue_mask_saturation_threshold": auto_result.recommended_tissue_mask_settings.get("saturation_threshold"),
-                "tissue_mask_min_area_px": auto_result.recommended_tissue_mask_settings.get("min_area_px"),
-            }
+        thresholds[BRIGHTFIELD_BATCH_THRESHOLD_PARAM] = (
+            float(batch_state.batch_threshold) if locked else float(threshold_bias["adjusted_a_min"])
         )
-        slider_values = (
-            build_brightfield_assisted_postprocess_slider_values(
-                threshold_bias=requested_threshold_bias,
-                active=threshold_bias_active,
-                inactive_reason=threshold_bias_inactive_reason,
-                small_region_filter_bias=requested_small_region_filter_bias,
-                baseline_min_area_px=baseline_min_area_px,
-                effective_min_area_px=small_region_filter_result["effective_min_area_px"],
-            )
-            if normalized_guided_mode == "assisted"
-            else build_brightfield_foolproof_slider_values(
-                threshold_bias=requested_threshold_bias,
-                active=threshold_bias_active,
-                inactive_reason=threshold_bias_inactive_reason,
-            )
-            if normalized_guided_mode == "foolproof"
-            else neutral_brightfield_guided_slider_values()
+        region_filter = apply_brightfield_small_region_filter_bias(
+            auto_result.recommended_min_area or 0,
+            incoming.get("small_region_filter_bias", guided_state["small_region_filter_bias"]),
+        )
+        tissue = auto_result.recommended_tissue_mask_settings
+        effective_settings = self._exact_analysis_settings({
+            **thresholds,
+            "min_object_area_px": region_filter["effective_min_area_px"],
+            "tissue_mask_enabled": bool(tissue.get("enabled", False)),
+            "tissue_mask_value_threshold": tissue.get("value_threshold"),
+            "tissue_mask_saturation_threshold": tissue.get("saturation_threshold"),
+            "tissue_mask_min_area_px": tissue.get("min_area_px"),
+        })
+        slider_values = build_brightfield_auto_slider_values(
+            threshold_bias=threshold_bias["threshold_bias"],
+            active=not locked,
+            inactive_reason="batch_threshold_locked" if locked else None,
+            small_region_filter_bias=region_filter["small_region_filter_bias"],
+            baseline_min_area_px=region_filter["baseline_min_area_px"],
+            effective_min_area_px=region_filter["effective_min_area_px"],
         )
         return {
             "image_record": image_record,
             "rgb": rgb,
             "guided_state": guided_state,
-            "normalized_guided_mode": normalized_guided_mode,
-            "sensitivity": sensitivity,
-            "cleanup_level": cleanup_level,
             "auto_result": auto_result,
             "batch_state_payload": batch_state_payload,
             "batch_state": batch_state,
             "effective_settings": effective_settings,
-            "threshold_source": threshold_source,
-            "threshold_method": threshold_method,
+            "threshold_source": "batch_locked" if locked else "image_auto",
+            "threshold_method": str((batch_state.batch_threshold_method if locked else None) or auto_result.threshold_method),
             "slider_values": slider_values,
-            "threshold_bias_result": threshold_bias_result,
-            "small_region_filter_result": small_region_filter_result,
         }
 
     def auto_analyze_he(
@@ -1051,19 +959,13 @@ class BrightfieldPanel(BasePanel):
         image_uid: str | None = None,
         settings: dict[str, Any] | None = None,
         roi: dict[str, Any] | None = None,
-        guided_mode: str = "foolproof",
     ) -> dict[str, Any]:
         plan = self._resolve_he_auto_analysis_plan(
             image_uid=image_uid,
             settings=settings,
-            guided_mode=guided_mode,
         )
         image_record = dict(plan["image_record"])
-        rgb = np.asarray(plan["rgb"])
         guided_state = dict(plan["guided_state"])
-        normalized_guided_mode = str(plan["normalized_guided_mode"])
-        sensitivity = str(plan["sensitivity"])
-        cleanup_level = str(plan["cleanup_level"])
         auto_result = plan["auto_result"]
         batch_state_payload = dict(plan["batch_state_payload"])
         batch_state = plan["batch_state"]
@@ -1071,10 +973,7 @@ class BrightfieldPanel(BasePanel):
         threshold_source = str(plan["threshold_source"])
         threshold_method = str(plan["threshold_method"])
         slider_values = dict(plan["slider_values"])
-        threshold_bias_result = dict(plan["threshold_bias_result"])
-        small_region_filter_result = dict(plan["small_region_filter_result"])
-
-        measurement = self.create_measurement(
+        measurement = self._create_measurement_with_exact_settings(
             image_uid=str(image_record["uid"]),
             settings=effective_settings,
             roi=roi,
@@ -1086,53 +985,11 @@ class BrightfieldPanel(BasePanel):
         )
         auto_result_payload["metadata"]["threshold_source"] = threshold_source
         auto_result_payload["metadata"]["applied_threshold_method"] = threshold_method
-        if normalized_guided_mode == "foolproof":
-            auto_result_payload["metadata"]["foolproof_threshold_bias_mapping_version"] = (
-                BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION
-            )
-            auto_result_payload["metadata"]["foolproof_threshold_bias"] = int(slider_values.get("threshold_bias", 0))
-            auto_result_payload["metadata"]["foolproof_threshold_bias_active"] = bool(
-                slider_values.get("threshold_bias_active", False)
-            )
-            auto_result_payload["metadata"]["foolproof_threshold_bias_inactive_reason"] = slider_values.get(
-                "threshold_bias_inactive_reason"
-            )
-            auto_result_payload["metadata"]["foolproof_baseline_a_min"] = float(threshold_bias_result["baseline_a_min"])
-            auto_result_payload["metadata"]["foolproof_delta_a_min"] = float(threshold_bias_result["delta_a_min"])
-        else:
-            for key in BRIGHTFIELD_FOOLPROOF_METADATA_KEYS:
-                auto_result_payload["metadata"].pop(key, None)
-        if normalized_guided_mode == "assisted":
-            auto_result_payload["metadata"]["assisted_threshold_bias"] = int(slider_values.get("threshold_bias", 0))
-            auto_result_payload["metadata"]["assisted_threshold_bias_active"] = bool(
-                slider_values.get("threshold_bias_active", False)
-            )
-            auto_result_payload["metadata"]["assisted_threshold_bias_inactive_reason"] = slider_values.get(
-                "threshold_bias_inactive_reason"
-            )
-            auto_result_payload["metadata"]["assisted_small_region_filter_bias"] = int(
-                small_region_filter_result["small_region_filter_bias"]
-            )
-            auto_result_payload["metadata"]["assisted_small_region_filter_mapping_version"] = (
-                BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION
-            )
-            auto_result_payload["metadata"]["assisted_baseline_min_area_px"] = int(
-                small_region_filter_result["baseline_min_area_px"]
-            )
-            auto_result_payload["metadata"]["assisted_effective_min_area_px"] = int(
-                small_region_filter_result["effective_min_area_px"]
-            )
-        else:
-            for key in BRIGHTFIELD_ASSISTED_METADATA_KEYS:
-                auto_result_payload["metadata"].pop(key, None)
         if threshold_source == "batch_locked" and batch_state.batch_threshold is not None:
             auto_result_payload["metadata"]["batch_threshold"] = float(batch_state.batch_threshold)
             auto_result_payload["metadata"]["batch_threshold_parameter"] = BRIGHTFIELD_BATCH_THRESHOLD_PARAM
 
-        if normalized_guided_mode == "assisted":
-            measurement["params"]["sensitivity"] = sensitivity
-            measurement["params"]["cleanup_level"] = cleanup_level
-        measurement["guided_mode"] = normalized_guided_mode
+        measurement["guided_mode"] = "foolproof"
         measurement["task_profile"] = BRIGHTFIELD_HE_PROFILE.to_dict()
         measurement["threshold_source"] = threshold_source
         measurement["auto_parameter_result"] = auto_result_payload
@@ -1152,35 +1009,6 @@ class BrightfieldPanel(BasePanel):
                     "batch_lock_source_mode": _normalize_guided_mode(batch_lock_source_mode) if batch_lock_source_mode else None,
                 }
             )
-        if normalized_guided_mode == "foolproof":
-            metadata.update(
-                {
-                    "foolproof_threshold_bias_mapping_version": BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION,
-                    "foolproof_threshold_bias": int(slider_values.get("threshold_bias", 0)),
-                    "foolproof_threshold_bias_active": bool(slider_values.get("threshold_bias_active", False)),
-                    "foolproof_threshold_bias_inactive_reason": slider_values.get("threshold_bias_inactive_reason"),
-                    "foolproof_baseline_a_min": float(threshold_bias_result["baseline_a_min"]),
-                    "foolproof_delta_a_min": float(threshold_bias_result["delta_a_min"]),
-                }
-            )
-        else:
-            for key in BRIGHTFIELD_FOOLPROOF_METADATA_KEYS:
-                metadata.pop(key, None)
-        if normalized_guided_mode == "assisted":
-            metadata.update(
-                {
-                    "assisted_threshold_bias": int(slider_values.get("threshold_bias", 0)),
-                    "assisted_threshold_bias_active": bool(slider_values.get("threshold_bias_active", False)),
-                    "assisted_threshold_bias_inactive_reason": slider_values.get("threshold_bias_inactive_reason"),
-                    "assisted_small_region_filter_bias": int(small_region_filter_result["small_region_filter_bias"]),
-                    "assisted_small_region_filter_mapping_version": BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION,
-                    "assisted_baseline_min_area_px": int(small_region_filter_result["baseline_min_area_px"]),
-                    "assisted_effective_min_area_px": int(small_region_filter_result["effective_min_area_px"]),
-                }
-            )
-        else:
-            for key in BRIGHTFIELD_ASSISTED_METADATA_KEYS:
-                metadata.pop(key, None)
         self._apply_analysis_result_fields(
             measurement,
             threshold_source=threshold_source,
@@ -1192,28 +1020,14 @@ class BrightfieldPanel(BasePanel):
             measurement,
             batch_state=resolved_batch_state,
             slider_values=slider_values,
-            mapping_version=(
-                BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION
-                if normalized_guided_mode == "foolproof"
-                else BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-                if normalized_guided_mode == "assisted"
-                else None
-            ),
+            mapping_version=BRIGHTFIELD_AUTO_MAPPING_VERSION,
         )
         self._finalize_guided_preview_status(measurement)
 
-        guided_state["guided_mode"] = normalized_guided_mode
+        guided_state["guided_mode"] = "foolproof"
         guided_state["task_profile"] = BRIGHTFIELD_HE_PROFILE.to_dict()
-        if normalized_guided_mode == "foolproof":
-            guided_state["foolproof_threshold_bias"] = int(slider_values.get("threshold_bias", 0))
-        if normalized_guided_mode == "assisted":
-            guided_state["assisted_threshold_bias"] = int(slider_values.get("threshold_bias", 0))
-            guided_state["assisted_small_region_filter_bias"] = int(
-                small_region_filter_result["small_region_filter_bias"]
-            )
-        if normalized_guided_mode == "assisted":
-            guided_state["sensitivity"] = sensitivity
-            guided_state["cleanup_level"] = cleanup_level
+        guided_state["threshold_bias"] = slider_values["threshold_bias"]
+        guided_state["small_region_filter_bias"] = slider_values["small_region_filter_bias"]
         guided_state["batch_threshold_state"] = resolved_batch_state
         self.data["guided_state"] = guided_state
         if threshold_source == "batch_locked":
@@ -1222,8 +1036,7 @@ class BrightfieldPanel(BasePanel):
                 f"measurement_uuid={measurement['measurement_uuid']}; "
                 f"image_uid={image_record['uid']}; "
                 f"source_image={batch_state.batch_threshold_source_image or 'unknown'}; "
-                f"{BRIGHTFIELD_BATCH_THRESHOLD_PARAM}={float(batch_state.batch_threshold or 0.0):.3f}; "
-                f"mode={normalized_guided_mode}",
+                f"{BRIGHTFIELD_BATCH_THRESHOLD_PARAM}={float(batch_state.batch_threshold or 0.0):.3f}",
             )
         if analysis_mask is not None:
             self._cache_brightfield_analysis_mask(measurement, analysis_mask)
@@ -1347,6 +1160,7 @@ class BrightfieldPanel(BasePanel):
         return render_mask_overlay(rgb, analysis['mask'], color=(255, 0, 180), alpha=0.35)
 
     def _brightfield_analysis_mask_cache_key(self, measurement: dict[str, Any]) -> str:
+        from core.plotting.histology_processing import histology_input_context
         image_uid = str(measurement.get("image_uid", "")).strip()
         image_record = self._resolve_image_record(image_uid)
         return sha256_json(
@@ -1356,6 +1170,7 @@ class BrightfieldPanel(BasePanel):
                     "image_uid": image_uid,
                     "source_hash": str(image_record.get("source_hash", "")),
                     "source_path": str(image_record.get("source_path", "")),
+                    "input_processing": histology_input_context(image_record),
                 },
                 "params": dict(measurement.get("params", {})),
                 "roi": dict(measurement.get("roi", {})),
@@ -1405,62 +1220,21 @@ class BrightfieldPanel(BasePanel):
         while len(self._brightfield_analysis_mask_cache) > self._ANALYSIS_MASK_CACHE_LIMIT:
             self._brightfield_analysis_mask_cache.pop(next(iter(self._brightfield_analysis_mask_cache)))
 
-    def render_segmentation_overlay(
-        self,
-        image_uid: str | None = None,
-        settings: dict[str, Any] | None = None,
-        roi: dict[str, Any] | None = None,
-    ) -> np.ndarray:
-        image_record, rgb = self._load_image_rgb(image_uid)
-        merged_settings = self._merge_analysis_settings(settings)
-        roi_snapshot = self._resolve_roi_snapshot(image_record, roi)
-        roi_mask = self._build_roi_mask(rgb.shape[:2], roi_snapshot)
-        analysis = analyze_brightfield_image(rgb, merged_settings, roi_mask=roi_mask)
-        return render_mask_overlay(rgb, analysis["mask"], color=(255, 0, 180), alpha=0.35)
-
     def build_guided_preview(
         self,
         *,
         image_uid: str | None = None,
         stain_type: str | None = None,
-        guided_mode: str = "foolproof",
         settings: dict[str, Any] | None = None,
         roi: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        normalized_guided_mode = _normalize_guided_mode(guided_mode)
         image_record = self._resolve_image_record(image_uid)
         effective_stain_type = self._normalize_stain_type(stain_type or str(image_record.get("stain_type", "H&E")))
         roi_snapshot = self._resolve_roi_snapshot(image_record, roi)
-        if normalized_guided_mode == "expert":
-            _resolved_image_record, rgb = self._load_image_rgb(str(image_record["uid"]))
-            merged_settings = self._merge_analysis_settings(settings)
-            roi_mask = self._build_roi_mask(rgb.shape[:2], roi_snapshot)
-            analysis = analyze_brightfield_image(rgb, merged_settings, roi_mask=roi_mask)
-            overlay = render_mask_overlay(rgb, analysis["mask"], color=(255, 0, 180), alpha=0.35)
-            self._transient_preview_state = {}
-            return {
-                "image_uid": str(image_record["uid"]),
-                "image_name": str(image_record.get("source_name", "")),
-                "overlay": overlay,
-                "roi": roi_snapshot,
-                "params": merged_settings,
-                "analysis": analysis,
-                "guided_mode": normalized_guided_mode,
-                "stain_type": effective_stain_type,
-                "preview_hash": sha256_json(
-                    {
-                        "guided_mode": normalized_guided_mode,
-                        "stain_type": effective_stain_type,
-                        "params": merged_settings,
-                        "roi": roi_snapshot,
-                    }
-                ),
-            }
         if effective_stain_type == "H&E":
             plan = self._resolve_he_auto_analysis_plan(
                 image_uid=str(image_record["uid"]),
                 settings=settings,
-                guided_mode=normalized_guided_mode,
             )
             rgb = np.asarray(plan["rgb"])
             effective_settings = dict(plan["effective_settings"])
@@ -1469,14 +1243,7 @@ class BrightfieldPanel(BasePanel):
             slider_values = dict(plan["slider_values"])
             batch_state_payload = dict(plan["batch_state_payload"])
             task_profile = BRIGHTFIELD_HE_PROFILE.to_dict()
-            if normalized_guided_mode == "assisted":
-                effective_settings["sensitivity"] = str(plan["sensitivity"])
-                effective_settings["cleanup_level"] = str(plan["cleanup_level"])
         else:
-            if normalized_guided_mode == "assisted":
-                raise ValueError(
-                    "Assisted Brightfield auto-analysis for non-H&E stains is not available in this phase."
-                )
             _resolved_image_record, rgb = self._load_image_rgb(str(image_record["uid"]))
             task_profile_model = self._task_profile_for_stain_type(effective_stain_type)
             task_profile = task_profile_model.to_dict()
@@ -1498,12 +1265,12 @@ class BrightfieldPanel(BasePanel):
             "task_id": str(task_profile.get("task_id", "")),
             "threshold_source": threshold_source,
             "threshold_method": threshold_method,
-            "guided_mode": normalized_guided_mode,
+            "guided_mode": "foolproof",
             "stain_type": effective_stain_type,
         }
         analysis_metadata.update(dict(analysis.get("analysis_metadata", {})))
         guided_metadata = package_brightfield_guided_measurement_metadata(
-            guided_mode=normalized_guided_mode,
+            guided_mode="foolproof",
             task_profile=task_profile,
             stain_type=effective_stain_type,
             image_context={
@@ -1520,18 +1287,11 @@ class BrightfieldPanel(BasePanel):
             batch_state=batch_state_payload,
             baseline_source=threshold_source,
             preview_status=BRIGHTFIELD_GUIDED_PREVIEW_MATCH_STATUS,
-            mapping_version=(
-                BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION
-                if normalized_guided_mode == "foolproof" and effective_stain_type == "H&E"
-                else BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-                if normalized_guided_mode == "assisted" and effective_stain_type == "H&E"
-                else None
-            )
-            or None,
+            mapping_version=BRIGHTFIELD_AUTO_MAPPING_VERSION if effective_stain_type == "H&E" else None,
         )
         self._transient_preview_state = {
             "image_uid": str(image_record["uid"]),
-            "guided_mode": normalized_guided_mode,
+            "guided_mode": "foolproof",
             "stain_type": effective_stain_type,
             "guided_effective_settings_hash": guided_metadata["guided_effective_settings_hash"],
         }
@@ -1542,7 +1302,7 @@ class BrightfieldPanel(BasePanel):
             "roi": roi_snapshot,
             "params": effective_settings,
             "analysis": analysis,
-            "guided_mode": normalized_guided_mode,
+            "guided_mode": "foolproof",
             "stain_type": effective_stain_type,
             "guided_metadata": guided_metadata,
             "preview_hash": guided_metadata["guided_effective_settings_hash"],
@@ -1591,6 +1351,9 @@ class BrightfieldPanel(BasePanel):
     def _load_image_rgb(self, image_uid: str | None = None) -> tuple[dict[str, Any], np.ndarray]:
         image_record = self._resolve_image_record(image_uid)
         rgb, _ = read_rgb_image(Path(str(image_record.get("source_path", ""))))
+        if image_record.get('segmentation_input', 'raw') == 'adjusted':
+            from core.plotting.histology_processing import apply_histology_processing
+            rgb = apply_histology_processing(rgb, image_record)
         return image_record, rgb
 
     def _build_import_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
@@ -1628,7 +1391,13 @@ class BrightfieldPanel(BasePanel):
         for key, value in existing.items():
             if key not in {"task_profile", "batch_threshold_state"}:
                 merged[key] = value
-        merged["guided_mode"] = _normalize_guided_mode(merged.get("guided_mode"))
+        if "threshold_bias" not in existing:
+            key = "assisted_threshold_bias" if existing.get("guided_mode") == "assisted" else "foolproof_threshold_bias"
+            merged["threshold_bias"] = existing.get(key, 0)
+        if "small_region_filter_bias" not in existing:
+            merged["small_region_filter_bias"] = (
+                existing.get("assisted_small_region_filter_bias", 0) if existing.get("guided_mode") == "assisted" else 0
+            )
         profile = dict(existing.get("task_profile", {}))
         if str(profile.get("task_id", "")).strip():
             merged["task_profile"] = dict(profile)

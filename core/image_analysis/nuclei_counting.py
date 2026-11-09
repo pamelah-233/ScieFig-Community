@@ -3,12 +3,6 @@ import cv2
 import numpy as np
 from types import MappingProxyType
 from scipy import ndimage as ndi
-from skimage.color import rgb2hed
-from skimage.feature import peak_local_max
-from skimage.filters import threshold_otsu
-from skimage.segmentation import watershed
-from skimage.morphology import local_maxima
-from .he_round_nuclei import HE_ROUND_NUCLEI_V1, HE_REFINED_NUCLEI_V1, round_nuclear_labels, merge_nuclear_candidates
 
 
 # Retained baseline: new images may override a copy, never this named recipe.
@@ -20,8 +14,10 @@ HE_LOCAL_CONTRAST_V1 = MappingProxyType(dict(
 
 
 def _resolve_he_settings(overrides, method='watershed'):
-    recipe = (HE_REFINED_NUCLEI_V1 if method == 'he_refined' else
-              HE_ROUND_NUCLEI_V1 if method == 'he_round' else HE_LOCAL_CONTRAST_V1)
+    recipe = HE_LOCAL_CONTRAST_V1
+    if method in ('he_round', 'he_refined'):
+        from .he_round_nuclei import HE_ROUND_NUCLEI_V1, HE_REFINED_NUCLEI_V1
+        recipe = HE_REFINED_NUCLEI_V1 if method == 'he_refined' else HE_ROUND_NUCLEI_V1
     if overrides is not None and set(overrides)-recipe.keys():
         raise ValueError('Unknown H&E nuclear optimization setting.')
     settings = {**recipe, **(overrides or {})}
@@ -42,6 +38,7 @@ def nuclear_signal(image, stain):
     if stain == 'dapi' and source.ndim == 2:
         return source.astype(np.float32)
     if stain == 'he' and source.ndim == 3 and source.shape[2] == 3:
+        from skimage.color import rgb2hed
         return np.maximum(rgb2hed(source.astype(np.float32) / 255)[..., 0], 0).astype(np.float32)
     raise ValueError('Choose one native DAPI channel, or an RGB H&E image.')
 
@@ -68,6 +65,10 @@ def object_rows(labels, signal):
 
 def _he_watershed_labels(signal, diameter_px, min_area_px, sensitivity, settings):
     """Local H contrast for faint nuclei; compact peaks, not fiber-rim seeds."""
+    from skimage.feature import peak_local_max
+    from skimage.filters import threshold_otsu
+    from skimage.morphology import local_maxima
+    from skimage.segmentation import watershed
     positive = signal[signal > 1e-6]
     if positive.size:
         # Near-zero RGB samples create extreme optical-density spikes. Limit
@@ -158,6 +159,7 @@ def count_nuclei(image, *, stain, method='watershed', diameter_px=17., min_area_
     elif method in ('he_round', 'he_refined'):
         if stain != 'he':
             raise ValueError('The round H&E nuclear method requires an RGB H&E image.')
+        from .he_round_nuclei import round_nuclear_labels, merge_nuclear_candidates
         labels = round_nuclear_labels(image, signal, diameter_px, min_area_px, max_area_px, sensitivity, settings)
         provenance['version'] = 'he_round_nuclei_v1'
         if method == 'he_refined':
@@ -173,6 +175,10 @@ def count_nuclei(image, *, stain, method='watershed', diameter_px=17., min_area_
             labels = _he_watershed_labels(signal, diameter_px, min_area_px, sensitivity, settings)
             provenance['version'] = 'he_local_contrast_v1'
         else:
+            from skimage.feature import peak_local_max
+            from skimage.filters import threshold_otsu
+            from skimage.segmentation import watershed
+
             smooth = ndi.gaussian_filter(signal, .65)
             threshold = float(threshold_otsu(smooth)) / sensitivity
             foreground = smooth > threshold
@@ -192,6 +198,7 @@ def count_nuclei(image, *, stain, method='watershed', diameter_px=17., min_area_
         # Preserve primary contours. Contrast-enhanced candidates only supplement
         # independent bodies, with an original-intensity gate to reject dim noise.
         from .cellpose_backend import run_cellpose_labels, prepare_cellpose_channel
+        from .he_round_nuclei import merge_nuclear_candidates
         primary, _ = _filter_nuclear_objects(labels, measured_signal, None, None, min_area_px, max_area_px)
         ids = np.unique(primary); ids = ids[ids > 0]
         if len(ids):

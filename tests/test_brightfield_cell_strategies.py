@@ -37,11 +37,11 @@ def test_ui_two_strategies_editable_size_and_no_automatic_preset(qt_application)
     try:
         ui=window.data_panel
         assert not hasattr(ui,'brightfield_cellpose_checkbox')
-        assert ui.bright_round_cell_analysis_settings()['backend']=='traditional'
-        assert ui.brightfield_cellpose_strategy_combo.currentData()=='traditional'
+        assert ui.bright_round_cell_analysis_settings()['backend']=='cellpose'
+        assert ui.brightfield_cellpose_strategy_combo.currentData()=='general'
         ui.set_cell_analysis_settings({'backend':'cellpose','model_diameter_px':37})
         combo=ui.brightfield_cellpose_strategy_combo
-        assert [combo.itemData(i) for i in range(combo.count())]==['traditional','general','local_contrast']
+        assert [combo.itemData(i) for i in range(combo.count())]==['general','local_contrast','traditional']
         combo.setCurrentIndex(combo.findData('local_contrast'))
         assert ui.brightfield_cellpose_diameter_spin.value()==37
         settings=ui.bright_round_cell_analysis_settings()

@@ -14,7 +14,9 @@ from core.utils.i18n import bind_i18n, retranslate_bound_widgets
 from ui.widgets.canvas_presentation import (PAPER_INSET, REFERENCE_PAPER_SIZE, configure_canvas_layout,
                                             configure_canvas_paper, configure_canvas_viewport)
 from ui.widgets.canvas_graphics_adapter import as_viewport_point
-from ui.widgets.canvas_view_controller import CanvasNavigationFilter, SceneCanvasOwnerMixin, attach_canvas_controller
+from ui.widgets.canvas_view_controller import (
+    CanvasNavigationFilter, SceneCanvasOwnerMixin, attach_canvas_controller, scroll_canvas_by,
+)
 from ui.widgets.canvas_zoom import CanvasZoomControls, FIT_VIEWPORT_MARGIN_PX, actual_zoom_factor, next_manual_zoom
 from ui.widgets.scale_line_drawing import constrained_scale_line_end, scale_line_is_valid, paint_scale_line_preview
 
@@ -90,6 +92,14 @@ class SelectableImageLabel(QLabel):
         if had_draft:
             self.update()
         return had_draft
+
+    def clear_selection_draft(self) -> None:
+        self._press_pos = None
+        self.clear_scale_line_draft()
+        self._line_drag_role = ""
+        self._line_drag_start_pos = None
+        self._line_drag_start_line = {}
+        self._sync_rubber_band_to_source_roi()
 
     def clear_source_roi_rect(self) -> None:
         self._source_roi_rect = QRect()
@@ -422,7 +432,7 @@ class PreviewPaperBackend:
         return target
 
     def apply_fit(self, margin_px):
-        viewport = self.canvas.scroll_area.viewport().size()
+        viewport = self.canvas.scroll_area.maximumViewportSize()
         base = self.canvas._base_paper_size
         zoom = min(max(1,viewport.width()-2*margin_px)/base.width(),
                    max(1,viewport.height()-2*margin_px)/base.height())
@@ -445,13 +455,8 @@ class PreviewPaperBackend:
         mapped = viewport.mapFromGlobal(widget.mapToGlobal(local))
         self.pan_by(point.x()-mapped.x(), point.y()-mapped.y())
 
-    def prepare_pan(self):
-        pass
-
-    def pan_by(self, dx, dy):
-        area = self.canvas.scroll_area
-        area.horizontalScrollBar().setValue(area.horizontalScrollBar().value()-dx)
-        area.verticalScrollBar().setValue(area.verticalScrollBar().value()-dy)
+    def pan_by(self, dx, dy) -> None:
+        scroll_canvas_by(self.canvas.scroll_area, dx, dy)
 
 
 class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
@@ -512,8 +517,6 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
         configure_canvas_viewport(self.scroll_area)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidgetResizable(False)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.scroll_content)
 
@@ -561,8 +564,8 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
     def set_figure(self, figure) -> None:
         from ui.widgets.figure_preview import FigurePreview as FigureCanvas
 
-        self.clear_figure()
-        self._source_pixmap = None
+        had_content = self._has_content()
+        self._clear_content()
         self.placeholder.hide()
         self._base_paper_size = QSize(*REFERENCE_PAPER_SIZE)
         self.figure_canvas = FigureCanvas(figure)
@@ -570,8 +573,11 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
         self.figure_canvas.setStyleSheet("background: white;")
         self.paper_layout.addWidget(self.figure_canvas, 1)
         self.figure_canvas.installEventFilter(self)
-        self._apply_paper_zoom()
         self.figure_canvas.draw()
+        if had_content:
+            self._apply_paper_zoom()
+        else:
+            self.fit_to_canvas()
         self.schedule_fit_after_layout()
 
     def set_figure_from_factory(self, render_key, factory) -> None:
@@ -584,7 +590,8 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
         return SelectableImageLabel()
 
     def set_pixmap(self, pixmap: QPixmap, title: str = "", body: str = "", enable_roi_selection: bool = False) -> None:
-        self.clear_figure()
+        had_content = self._has_content()
+        self._clear_content()
         self.placeholder.hide()
         self._source_pixmap = QPixmap(pixmap)
         self.image_label = self._make_image_label()
@@ -597,7 +604,10 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
         self.paper_layout.addWidget(self.image_label, 1)
         self.image_label.show()
         self.image_label.installEventFilter(self)
-        self._refresh_image_display()
+        if had_content:
+            self._apply_paper_zoom()
+        else:
+            self.fit_to_canvas()
         if title:
             self.title.setText(title)
         if body:
@@ -616,6 +626,11 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
             self.image_label.set_source_roi_rect(rect)
 
     def clear_figure(self) -> None:
+        self._clear_content()
+        self.placeholder.show()
+        self.fit_to_canvas()
+
+    def _clear_content(self) -> None:
         self._figure_render_key = None
         if self.figure_canvas is not None:
             self.figure_canvas.setParent(None)
@@ -627,16 +642,12 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
             self.image_label = None
         self._source_pixmap = None
         self._bind_empty_copy()
-        self.placeholder.show()
-        self._apply_paper_zoom()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        if hasattr(self, "_view_controller"):
-            if self._fit_mode:
-                self._view_controller.handle_resize()
-            else:
-                self._view_controller.apply_after_content_change()
+        # Fit already follows the scroll viewport's resize in the controller.
+        if hasattr(self, "_view_controller") and not self._fit_mode:
+            self._view_controller.apply_after_content_change()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -667,6 +678,10 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
     def apply_paper_zoom_factor(self, factor: float) -> None:
         self._resize_paper(factor)
         self._refresh_image_display()
+        self._update_scroll_bounds()
+
+    def _has_content(self) -> bool:
+        return self.figure_canvas is not None or (self._source_pixmap is not None and not self._source_pixmap.isNull())
 
     def _resize_paper(self, factor: float) -> None:
         factor = actual_zoom_factor(factor)
@@ -675,14 +690,42 @@ class PreviewCanvas(SceneCanvasOwnerMixin, QWidget):
             max(1, int(round(self._base_paper_size.height() * factor))),
         )
         self.paper.setFixedSize(paper_size)
-        # View-only space around the paper allows panning even while fitted.
-        viewport = self.scroll_area.viewport().size()
-        self.scroll_content.setFixedSize(paper_size.width()+2*viewport.width(), paper_size.height()+2*viewport.height())
-        self.paper.move(viewport.width(), viewport.height())
         margin = max(0, round(PAPER_INSET*factor)-self.paper.frameWidth())
         self.paper_layout.setContentsMargins(margin, margin, margin, margin)
         self.paper_layout.activate()
         self.zoom_controls.set_zoom_factor(factor)
+
+    def _update_scroll_bounds(self) -> None:
+        area = self.scroll_area
+        viewport = area.maximumViewportSize()
+        region = self.paper.rect()
+        if not self._fit_mode and self._has_content() and (
+            region.width() > viewport.width() or region.height() > viewport.height()
+        ):
+            widget, rect = self._content_geometry()
+            content = rect.translated(QPointF(widget.mapTo(self.paper, QPoint()))).toAlignedRect()
+            width, height = viewport.width(), viewport.height()
+            horizontal_extent = area.horizontalScrollBar().sizeHint().height()
+            if content.width() > width:
+                height -= horizontal_extent
+            if content.height() > height:
+                width -= area.verticalScrollBar().sizeHint().width()
+            if content.width() > width:
+                height = viewport.height() - horizontal_extent
+            x, w = self._scroll_extent(region.width(), content.x(), content.width(), max(1, width))
+            y, h = self._scroll_extent(region.height(), content.y(), content.height(), max(1, height))
+            region = QRect(x, y, w, h)
+        self.scroll_content.setFixedSize(region.size())
+        self.paper.move(-region.topLeft())
+
+    @staticmethod
+    def _scroll_extent(paper_size, content_start, content_size, available):
+        # Blank paper margins can be clipped without requiring another scrollbar.
+        if content_size > available:
+            return content_start, content_size
+        size = min(paper_size, available)
+        start = min(content_start, max(content_start + content_size - size, (paper_size - size) // 2))
+        return start, size
 
     def _content_geometry(self):
         if self.image_label is not None and self.image_label.pixmap() is not None:

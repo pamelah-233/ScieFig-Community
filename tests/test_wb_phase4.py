@@ -162,12 +162,15 @@ def test_wb_canvas_roi_selection_records_crop(tmp_path) -> None:
     window.set_module("wb")
     window.import_wb_image(str(blot_path))
 
+    panel = window._active_wb_panel()
+    window.set_wb_roi_from_canvas(QRectF(600, 600, 80, 30))
+    assert not panel.data.get("crops")
     window.set_wb_roi_from_canvas(QRectF(20, 10, 80, 30))
 
-    panel = window._active_wb_panel()
     assert panel.data["crops"][-1]["roi"] == {"x": 20, "y": 10, "w": 80, "h": 30}
     assert window.data_panel.wb_x_spin.value() == 20
     assert window.data_panel.wb_h_spin.value() == 30
+    window._capture_clean_project_baseline()
     window.close()
     app.processEvents()
 
@@ -201,13 +204,16 @@ def test_wb_first_crop_after_import_uses_displayed_image(tmp_path, desktop_scree
     for spin in (window.data_panel.wb_x_spin, window.data_panel.wb_y_spin,
                  window.data_panel.wb_w_spin, window.data_panel.wb_h_spin):
         spin.setRange(0, 0)
-    # Both the first drag and a second drag after zooming need no reselection.
+    # Re-enter the source crop tool after the aligned preview, then crop a different area.
     for zoom in (1.0, 1.25):
+        offset = 0
         if zoom != 1.0:
+            window.enable_wb_roi_mode()
             window.wb_canvas._view_controller.zoom_by(zoom)
+            offset = 22
         view = window.wb_canvas.view
-        start = view.mapFromScene(QPointF(40, 30))
-        end = view.mapFromScene(QPointF(200, 90))
+        start = view.mapFromScene(QPointF(40 + offset, 30))
+        end = view.mapFromScene(QPointF(200 + offset, 90))
         expected = view.mapToScene(start), view.mapToScene(end)
         QTest.mousePress(view.viewport(), Qt.MouseButton.LeftButton, pos=start)
         QTest.mouseMove(view.viewport(), end, delay=30)
@@ -223,6 +229,7 @@ def test_wb_first_crop_after_import_uses_displayed_image(tmp_path, desktop_scree
         window.data_panel.wb_strip_table.selectRow(0)
         assert panel.data["selected_strip_index"] == 0
         assert window.wb_canvas._strip_display_rects[0]["index"] == 0
+    window._capture_clean_project_baseline()
     window.close()
     app.processEvents()
 

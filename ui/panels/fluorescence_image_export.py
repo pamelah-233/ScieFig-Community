@@ -284,6 +284,9 @@ def render_fluorescence_export_payloads(panel, image_record: dict, *, source: st
     if data is None:
         raise ValueError("Import a fluorescence image before exporting.")
     if source == SOURCE_UNADJUSTED:
+        if image_record.get('rgb_display'):
+            image_record = dict(image_record)
+            image_record.pop('rgb_display')
         original = image_record.get('import_display_channels')
         if rgb_interpretation_mode(image_record) == FORCED_RGB_SPLIT_MODE:
             # The import snapshot describes one RGB composite, not the three

@@ -62,8 +62,7 @@ class WorkflowPresentationController(QObject):
         for button in (fluoro.draw_square_button, fluoro.draw_circle_button, fluoro.draw_freehand_button):
             button.clicked.connect(lambda checked=False, source=button: self._select_roi_source(source))
         self._roi_source = fluoro.draw_square_button
-        for combo in (data.brightfield_measure_type_combo, data.ihc_mode_combo, data.brightfield_mode_combo):
-            combo.currentIndexChanged.connect(self.schedule_sync)
+        data.brightfield_measure_type_combo.currentIndexChanged.connect(self.schedule_sync)
         for controller in window.nuclei_controllers.values():
             controller.controls.entry.toggled.connect(self.schedule_sync)
         for controller in window.myotube_controllers.values():
@@ -189,11 +188,11 @@ class WorkflowPresentationController(QObject):
             section.setExpanded(True)
             section.toggle.hide()
         page_layout = ws.context_stack.widget(2).layout()
-        # Keep the original preset/mode/batch controls, but behind the current task.
+        # Keep presets and batch commands behind the current task.
         tools = QWidget()
         tools_layout = QVBoxLayout(tools)
         tools_layout.setContentsMargins(0, 0, 0, 0)
-        for widget in (ws.mode_label, ws.mode_combo, window.analysis_state.bars['fluorescence'],
+        for widget in (window.analysis_state.bars['fluorescence'],
                        window.microscopy_workflow.batch_buttons['fluorescence']):
             widget.parentWidget().layout().removeWidget(widget)
             tools_layout.addWidget(widget)
@@ -222,8 +221,7 @@ class WorkflowPresentationController(QObject):
         ws.active_image_panel.layout().setContentsMargins(0, 0, 0, 0)
         ws.active_image_panel.layout().setSpacing(6)
         ws.active_image_group.setMaximumHeight(90)
-        for name in ('ihc', 'brightfield'):
-            self._wrap(window.analysis_state.bars[name], 'workflow_presets_batch')
+        self._wrap(window.analysis_state.bars['brightfield'], 'workflow_presets_batch')
         # The current task precedes staging; the original full list remains one click away.
         self.staging_section = self._wrap(window.wb_staging_group, 'strip_staging')
         self.canvas_sections = dict(
@@ -238,16 +236,6 @@ class WorkflowPresentationController(QObject):
         # Legacy context panels added another 12 px on both sides.
         for module in ('qpcr','wb','ihc','brightfield'):
             getattr(data,f'{module}_context_panel').layout().setContentsMargins(0,0,0,0)
-        # White balance is outside the nested workflow group at import/measure.
-        # Give it the same gutter rather than drawing its title on the edge.
-        for module in ('ihc',):
-            widget=getattr(self.window,module+'_workspace').white_balance.widget
-            layout=widget.parentWidget().layout();index=layout.indexOf(widget)
-            if index>=0:
-                layout.removeWidget(widget)
-                wrapper=QWidget();wrapper.setProperty('workflowPlain',True)
-                inner=QVBoxLayout(wrapper);inner.setContentsMargins(14,0,14,0);inner.addWidget(widget)
-                layout.insertWidget(index,wrapper)
         for panel in self.panels.values():
             panel.layout().setContentsMargins(0, 0, 0, 0)
             for widget in panel.findChildren(QWidget):

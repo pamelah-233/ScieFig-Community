@@ -20,10 +20,10 @@ class MyotubeControls(QWidget):
         self.channel=QComboBox();self.channel.setMinimumWidth(0)
         if module=='fluoro':form.addRow(bind_i18n(QLabel(),'myotube_channel'),self.channel)
         self.method=QComboBox();self.method.setMinimumWidth(0)
-        self.method.addItem(tr('myotube_method_general'),'cyto3')
         if module=='brightfield':
             self.method.addItem(tr('myotube_method_boundary'),'truefad_rim_path')
             form.addRow(bind_i18n(QLabel(),'myotube_method'),self.method)
+        self.method.addItem(tr('myotube_method_general'),'cyto3')
         self.model_hint=ModelSelectionHint(self.method,dict(cyto3='cyto3',truefad_rim_path='truefad_myotube'))
         form.addRow(self.model_hint)
         self.diameter=QDoubleSpinBox();self.diameter.setRange(2,2000);self.diameter.setSuffix(' px')
@@ -61,7 +61,7 @@ class MyotubeControls(QWidget):
 
     def set_parameters(self,params):
         values={**DEFAULTS,**params}
-        selected=self.method.findData(values.get('method','cyto3'))
+        selected=self.method.findData(values.get('method'))
         self.method.blockSignals(True);self.method.setCurrentIndex(max(0,selected));self.method.blockSignals(False)
         for widget,key in ((self.diameter,'diameter_px'),(self.minimum,'min_area_px'),(self.aspect,'min_aspect_ratio')):
             widget.blockSignals(True);widget.setValue(values[key]);widget.blockSignals(False)

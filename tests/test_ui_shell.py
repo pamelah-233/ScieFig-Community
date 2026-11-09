@@ -590,7 +590,7 @@ def test_v9_shell_language_switch_retranslates_visible_chrome() -> None:
         assert window.v9_shell.stage_title_label.text() == "荧光"
         assert window.v9_shell.right_panel_title.text() == "荧光工作流"
         assert window.v9_shell.workflow_row.isVisible()
-        assert window.fluoro_workspace.mode_combo.itemText(0) == "辅助"
+        assert not hasattr(window.fluoro_workspace, "mode_combo")
         assert window.fluoro_workspace.active_image_group.isHidden()
         window.fluoro_workspace.set_step(4)
         fluoro_labels = [label.text() for label in window.fluoro_workspace.workflow_panel.findChildren(QLabel)]
@@ -1033,11 +1033,6 @@ def test_run_ihc_analysis_populates_results_table(tmp_path) -> None:
 
     window.set_module("ihc")
     window.import_ihc_images([str(image_path)])
-    window.data_panel.ihc_positive_threshold_spin.setValue(0.30)
-    window.data_panel.ihc_weak_threshold_spin.setValue(0.20)
-    window.data_panel.ihc_moderate_threshold_spin.setValue(0.50)
-    window.data_panel.ihc_strong_threshold_spin.setValue(0.80)
-    window.data_panel.ihc_min_area_spin.setValue(2)
 
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
@@ -1066,7 +1061,6 @@ def test_run_ihc_analysis_uses_selected_roi_and_appends_measurements(tmp_path) -
 
     window.set_module("ihc")
     window.import_ihc_images([str(image_path)])
-    window.data_panel.ihc_min_area_spin.setValue(2)
 
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
@@ -1098,7 +1092,6 @@ def test_selecting_ihc_result_restores_measurement_roi(tmp_path) -> None:
 
     window.set_module("ihc")
     window.import_ihc_images([str(image_path)])
-    window.data_panel.ihc_min_area_spin.setValue(2)
     window.set_ihc_workflow_step(1)
 
     window.set_ihc_roi_from_canvas(QRect(0, 0, 2, 4))
@@ -1136,7 +1129,6 @@ def test_copy_ihc_results_table_puts_tsv_on_clipboard(tmp_path) -> None:
 
     window.set_module("ihc")
     window.import_ihc_images([str(image_path)])
-    window.data_panel.ihc_min_area_spin.setValue(2)
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
 
@@ -1158,7 +1150,6 @@ def test_run_ihc_statistics_populates_results_and_persists_analysis(tmp_path) ->
     image_b = _write_synthetic_ihc_png(tmp_path / "treated_ihc.png")
 
     window.set_module("ihc")
-    window.data_panel.ihc_min_area_spin.setValue(2)
     window.import_ihc_images([str(image_a)])
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
@@ -1197,7 +1188,6 @@ def test_copy_and_export_ihc_statistics_table(tmp_path) -> None:
     export_path = tmp_path / "ihc_statistics.csv"
 
     window.set_module("ihc")
-    window.data_panel.ihc_min_area_spin.setValue(2)
     window.import_ihc_images([str(image_a)])
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
@@ -1243,7 +1233,7 @@ def test_selectable_image_label_maps_click_to_source_pixels() -> None:
     app.processEvents()
 
 
-def test_assisted_ihc_example_clicks_queue_examples_then_recalibrate_and_revert(tmp_path) -> None:
+def test_ihc_example_clicks_queue_examples_then_recalibrate_and_revert(tmp_path) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance() or QApplication([])
     window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
@@ -1251,7 +1241,6 @@ def test_assisted_ihc_example_clicks_queue_examples_then_recalibrate_and_revert(
 
     window.set_module("ihc")
     window.import_ihc_images([str(image_path)])
-    window.data_panel.set_ihc_guided_mode("assisted")
     window.set_ihc_workflow_step(1)
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
@@ -1295,7 +1284,7 @@ def test_assisted_ihc_example_clicks_queue_examples_then_recalibrate_and_revert(
     assert window.ihc_workspace.canvas.example_marker_count() == 1
 
     window.data_panel.ihc_recalibrate_button.click()
-    app.processEvents()
+    _wait_for_analysis(window, "ihc")
 
     recalibrated = panel.analysis["ihc_measurements"][-1]
     assert recalibrated["threshold_source"] == "example_guided"
@@ -1312,7 +1301,7 @@ def test_assisted_ihc_example_clicks_queue_examples_then_recalibrate_and_revert(
     _close_widget(window, app)
 
 
-def test_foolproof_ihc_auto_analyze_uses_fixed_settings_logs_mode_switch_and_updates_banner_from_measurement(tmp_path, monkeypatch) -> None:
+def test_ihc_auto_analyze_uses_detection_slider_and_updates_banner_from_measurement(tmp_path, monkeypatch) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance() or QApplication([])
     window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
@@ -1338,20 +1327,17 @@ def test_foolproof_ihc_auto_analyze_uses_fixed_settings_logs_mode_switch_and_upd
     monkeypatch.setattr(type(panel), "auto_analyze_dab", capture_auto_analyze)
     monkeypatch.setattr(window.data_panel.ihc_reliability_banner, "set_status", capture_banner)
 
-    window.data_panel.set_ihc_guided_mode("assisted")
-    app.processEvents()
-    window.data_panel.ihc_sensitivity_combo.setCurrentIndex(0)
-    window.data_panel.ihc_cleanup_combo.setCurrentIndex(0)
-    window.data_panel.ihc_tissue_correction_checkbox.setChecked(False)
-
-    window.data_panel.set_ihc_guided_mode("foolproof")
-    app.processEvents()
+    controls = window.data_panel
+    slider = controls.ihc_detection_sensitivity_slider
+    assert controls.ihc_detection_sensitivity() == "medium"
+    assert slider.isEnabled()
+    slider.setValue(slider.maximum())
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
 
     assert captured["guided_mode"] == "foolproof"
     assert captured["settings"] == {
-        "sensitivity": "medium",
+        "sensitivity": "high",
         "cleanup_level": "medium",
         "tissue_background_correction": True,
     }
@@ -1365,11 +1351,19 @@ def test_foolproof_ihc_auto_analyze_uses_fixed_settings_logs_mode_switch_and_upd
         ],
     }
     assert not hasattr(main_window_module, "evaluate_ihc_reliability")
-    assert [entry.detail for entry in panel.audit_log if entry.action == "ihc_mode_switch"][-2:] == [
-        "old_mode=foolproof; new_mode=assisted; source=ihc_mode_combo",
-        "old_mode=assisted; new_mode=foolproof; source=ihc_mode_combo",
-    ]
-    assert any(entry.action == "foolproof_auto_analyze" for entry in panel.audit_log)
+    assert measurement["params"]["sensitivity"] == "high"
+    assert measurement["analysis_inputs"]["settings"]["sensitivity"] == "high"
+    assert not slider.isEnabled()
+    assert controls.ihc_freshness_status_label.text() == tr("result_status_current")
+
+    controls.ihc_reset_batch_threshold_button.click()
+    assert slider.isEnabled()
+    assert controls.ihc_freshness_status_label.text() == tr("result_status_stale")
+    slider.setValue(slider.minimum())
+    method, options = window.microscopy_workflow.batch_spec("ihc")
+    assert method == "auto_analyze_dab"
+    assert options["settings"]["sensitivity"] == "low"
+    assert panel.analysis["ihc_measurements"] == [measurement]
 
     _close_widget(window, app)
 
@@ -1390,7 +1384,6 @@ def test_brightfield_foolproof_he_calls_auto_analyze_he(tmp_path, monkeypatch) -
 
     def capture_auto_analyze(panel, *args, **kwargs):
         captured["settings"] = kwargs.get("settings")
-        captured["guided_mode"] = kwargs.get("guided_mode")
         return original_auto_analyze(panel, *args, **kwargs)
 
     monkeypatch.setattr(type(panel), "auto_analyze_he", capture_auto_analyze)
@@ -1399,74 +1392,8 @@ def test_brightfield_foolproof_he_calls_auto_analyze_he(tmp_path, monkeypatch) -
     _wait_for_analysis(window, "brightfield")
 
     assert captured == {
-        "settings": {"threshold_bias": 0},
-        "guided_mode": "foolproof",
+        "settings": {"threshold_bias": 0, "small_region_filter_bias": 0},
     }
-    _close_widget(window, app)
-
-
-def test_brightfield_assisted_he_calls_auto_analyze_he_with_guided_settings(tmp_path, monkeypatch) -> None:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    image_path = _write_synthetic_ihc_png(tmp_path / "brightfield_assisted_he.png")
-
-    window.set_module("brightfield")
-    window.import_brightfield_images([str(image_path)])
-    window.data_panel.brightfield_stain_type_combo.setCurrentText("H&E")
-    window.update_brightfield_image_metadata()
-    window.data_panel.set_brightfield_guided_mode("assisted")
-    window.data_panel.brightfield_sensitivity_combo.setCurrentIndex(0)
-    window.data_panel.brightfield_cleanup_combo.setCurrentIndex(3)
-    panel = window._active_brightfield_panel()
-    captured: dict[str, object] = {}
-    original_auto_analyze = type(panel).auto_analyze_he
-
-    def capture_auto_analyze(panel, *args, **kwargs):
-        captured["settings"] = dict(kwargs.get("settings") or {})
-        captured["guided_mode"] = kwargs.get("guided_mode")
-        return original_auto_analyze(panel, *args, **kwargs)
-
-    monkeypatch.setattr(type(panel), "auto_analyze_he", capture_auto_analyze)
-
-    window.run_brightfield_analysis()
-    _wait_for_analysis(window, "brightfield")
-
-    assert captured == {
-        "settings": {
-            "sensitivity": "low",
-            "cleanup_level": "high",
-            "threshold_bias": 0,
-            "small_region_filter_bias": 0,
-        },
-        "guided_mode": "assisted",
-    }
-    _close_widget(window, app)
-
-
-def test_brightfield_expert_calls_create_measurement(tmp_path, monkeypatch) -> None:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    image_path = _write_synthetic_ihc_png(tmp_path / "brightfield_expert.png")
-
-    window.set_module("brightfield")
-    window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("expert")
-    panel = window._active_brightfield_panel()
-    captured: dict[str, object] = {}
-    original_create_measurement = type(panel).create_measurement
-
-    def capture_create_measurement(panel, *args, **kwargs):
-        captured["settings"] = dict(kwargs.get("settings") or {})
-        return original_create_measurement(panel, *args, **kwargs)
-
-    monkeypatch.setattr(type(panel), "create_measurement", capture_create_measurement)
-
-    window.run_brightfield_analysis()
-    _wait_for_analysis(window, "brightfield")
-
-    assert captured["settings"]["segmentation_mode"] == window.data_panel.brightfield_analysis_settings()["segmentation_mode"]
     _close_widget(window, app)
 
 
@@ -1478,7 +1405,6 @@ def test_brightfield_foolproof_non_he_uses_profile_preset_measurement(tmp_path, 
 
     window.set_module("brightfield")
     window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("foolproof")
     window.data_panel.brightfield_stain_type_combo.setCurrentText("Oil Red O")
     window.update_brightfield_image_metadata()
     info_calls: list[tuple[str, str]] = []
@@ -1508,7 +1434,6 @@ def test_brightfield_foolproof_visible_stain_combo_routes_current_run_when_metad
 
     window.set_module("brightfield")
     window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("foolproof")
     panel = window._active_brightfield_panel()
     assert panel.active_image()["stain_type"] == "H&E"
 
@@ -1535,78 +1460,9 @@ def test_brightfield_foolproof_visible_stain_combo_routes_current_run_when_metad
     _wait_for_analysis(window, "brightfield")
 
     assert auto_calls == []
-    assert profile_calls == [{"stain_type": "Oil Red O", "guided_mode": "foolproof"}]
+    assert profile_calls == [{"stain_type": "Oil Red O"}]
     measurement = window._active_brightfield_panel().analysis["brightfield_measurements"][-1]
     assert measurement["task_profile"]["task_id"] == "brightfield_oil_red_o_area"
-    _close_widget(window, app)
-
-
-def test_brightfield_assisted_non_he_blocks_without_analysis(tmp_path, monkeypatch) -> None:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    image_path = _write_synthetic_ihc_png(tmp_path / "brightfield_assisted_block_non_he.png")
-
-    window.set_module("brightfield")
-    window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("assisted")
-    window.data_panel.brightfield_stain_type_combo.setCurrentText("Oil Red O")
-    window.update_brightfield_image_metadata()
-    panel = window._active_brightfield_panel()
-    profile_calls: list[dict[str, object]] = []
-    manual_calls: list[dict[str, object]] = []
-    info_calls: list[tuple[str, str]] = []
-
-    def capture_profile_measurement(*args, **kwargs):
-        profile_calls.append(dict(kwargs))
-        return panel.analysis["brightfield_measurements"][-1] if panel.analysis["brightfield_measurements"] else {}
-
-    def capture_create_measurement(*args, **kwargs):
-        manual_calls.append(dict(kwargs))
-        return panel.analysis["brightfield_measurements"][-1] if panel.analysis["brightfield_measurements"] else {}
-
-    def capture_information(_parent, title, message):
-        info_calls.append((title, message))
-        return QMessageBox.StandardButton.Ok
-
-    monkeypatch.setattr(panel, "create_profile_preset_measurement", capture_profile_measurement)
-    monkeypatch.setattr(panel, "create_measurement", capture_create_measurement)
-    monkeypatch.setattr(main_window_module.QMessageBox, "information", capture_information)
-
-    window.run_brightfield_analysis()
-    _wait_for_analysis(window, "brightfield")
-
-    assert profile_calls == []
-    assert manual_calls == []
-    assert info_calls == [
-        (
-            "Brightfield",
-            "Assisted Brightfield auto-analysis for non-H&E stains is not available in this phase.\n"
-            "Use Foolproof for the experimental preset profile or switch to Expert for manual analysis.",
-        )
-    ]
-    _close_widget(window, app)
-
-
-def test_brightfield_mode_switch_writes_structured_audit(tmp_path) -> None:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    image_path = _write_synthetic_ihc_png(tmp_path / "brightfield_mode_switch.png")
-
-    window.set_module("brightfield")
-    window.import_brightfield_images([str(image_path)])
-    panel = window._active_brightfield_panel()
-
-    window.data_panel.set_brightfield_guided_mode("assisted")
-    app.processEvents()
-    window.data_panel.set_brightfield_guided_mode("expert")
-    app.processEvents()
-
-    assert [entry.detail for entry in panel.audit_log if entry.action == "brightfield_mode_switch"][-2:] == [
-        "old_mode=foolproof; new_mode=assisted; source=brightfield_mode_combo",
-        "old_mode=assisted; new_mode=expert; source=brightfield_mode_combo",
-    ]
     _close_widget(window, app)
 
 
@@ -1667,7 +1523,6 @@ def test_brightfield_batch_threshold_controls_disable_incompatible_measurement(t
 
     window.set_module("brightfield")
     window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("expert")
     window.data_panel.brightfield_stain_type_combo.setCurrentText("Oil Red O")
     window.update_brightfield_image_metadata()
     window.run_brightfield_analysis()
@@ -1688,36 +1543,10 @@ def test_brightfield_foolproof_sensitivity_change_starts_debounced_preview_and_p
 
     window.set_module("brightfield")
     window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("foolproof")
     calls: list[str] = []
     monkeypatch.setattr(window, "preview_brightfield_segmentation", lambda: calls.append("preview"))
 
-    window.data_panel.set_brightfield_foolproof_threshold_bias(2)
-
-    assert window._brightfield_preview_debounce_timer.isActive()
-    assert "300 ms" in window.data_panel.brightfield_preview_status_label.text()
-
-    window._flush_brightfield_preview_debounce()
-
-    assert calls == ["preview"]
-    assert window._active_brightfield_panel().analysis["brightfield_measurements"] == []
-
-    _close_widget(window, app)
-
-
-def test_brightfield_assisted_sensitivity_change_starts_debounced_preview_and_preview_stays_transient(tmp_path, monkeypatch) -> None:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    image_path = _write_synthetic_brightfield_he_png(tmp_path / "brightfield_assisted_debounce.png")
-
-    window.set_module("brightfield")
-    window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("assisted")
-    calls: list[str] = []
-    monkeypatch.setattr(window, "preview_brightfield_segmentation", lambda: calls.append("preview"))
-
-    window.data_panel.set_brightfield_assisted_threshold_bias(2)
+    window.data_panel.set_brightfield_area_analysis_settings({"threshold_bias": 2})
 
     assert window._brightfield_preview_debounce_timer.isActive()
     assert "300 ms" in window.data_panel.brightfield_preview_status_label.text()
@@ -1738,11 +1567,10 @@ def test_brightfield_assisted_small_region_filter_change_starts_debounced_previe
 
     window.set_module("brightfield")
     window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("assisted")
     calls: list[str] = []
     monkeypatch.setattr(window, "preview_brightfield_segmentation", lambda: calls.append("preview"))
 
-    window.data_panel.set_brightfield_assisted_small_region_filter_bias(2)
+    window.data_panel.set_brightfield_area_analysis_settings({"small_region_filter_bias": 2})
 
     assert window._brightfield_preview_debounce_timer.isActive()
     assert "300 ms" in window.data_panel.brightfield_preview_status_label.text()
@@ -1763,11 +1591,10 @@ def test_brightfield_pending_guided_preview_is_canceled_when_final_analysis_runs
 
     window.set_module("brightfield")
     window.import_brightfield_images([str(image_path)])
-    window.data_panel.set_brightfield_guided_mode("foolproof")
     calls: list[str] = []
     monkeypatch.setattr(window, "preview_brightfield_segmentation", lambda: calls.append("preview"))
 
-    window.data_panel.set_brightfield_foolproof_threshold_bias(2)
+    window.data_panel.set_brightfield_area_analysis_settings({"threshold_bias": 2})
     assert window._brightfield_preview_debounce_timer.isActive()
 
     window.run_brightfield_analysis()
@@ -1795,11 +1622,10 @@ def test_brightfield_pending_guided_preview_is_canceled_when_image_switches(tmp_
     panel = window._active_brightfield_panel()
     first_uid, second_uid = [image["uid"] for image in panel.images()]
     window.select_brightfield_image(first_uid)
-    window.data_panel.set_brightfield_guided_mode("assisted")
     calls: list[str] = []
     monkeypatch.setattr(window, "preview_brightfield_segmentation", lambda: calls.append("preview"))
 
-    window.data_panel.set_brightfield_assisted_threshold_bias(2)
+    window.data_panel.set_brightfield_area_analysis_settings({"threshold_bias": 2})
     assert window._brightfield_preview_debounce_timer.isActive()
 
     window.select_brightfield_image(second_uid)
@@ -1832,43 +1658,12 @@ def test_brightfield_batch_threshold_lock_disables_foolproof_sensitivity_control
     window.data_panel.brightfield_lock_batch_threshold_button.click()
     app.processEvents()
 
-    assert window.data_panel.brightfield_foolproof_sensitivity_combo.isEnabled() is False
+    assert window.data_panel.brightfield_detection_sensitivity_combo.isEnabled() is False
 
     window.data_panel.brightfield_unlock_batch_threshold_button.click()
     app.processEvents()
 
-    assert window.data_panel.brightfield_foolproof_sensitivity_combo.isEnabled() is True
-
-    _close_widget(window, app)
-
-
-def test_brightfield_batch_threshold_lock_disables_assisted_sensitivity_control(tmp_path) -> None:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    first_path = _write_synthetic_brightfield_he_png(tmp_path / "brightfield_assisted_bias_lock_first.png")
-    second_path = _write_synthetic_brightfield_he_png(tmp_path / "brightfield_assisted_bias_lock_second.png")
-
-    window.set_module("brightfield")
-    window.import_brightfield_images([str(first_path), str(second_path)])
-    panel = window._active_brightfield_panel()
-    first_uid, _second_uid = [image["uid"] for image in panel.images()]
-
-    window.select_brightfield_image(first_uid)
-    window.data_panel.set_brightfield_guided_mode("assisted")
-    window.run_brightfield_analysis()
-    _wait_for_analysis(window, "brightfield")
-    window.data_panel.brightfield_lock_batch_threshold_button.click()
-    app.processEvents()
-
-    assert window.data_panel.brightfield_assisted_sensitivity_combo.isEnabled() is False
-    assert window.data_panel.brightfield_assisted_small_region_filter_combo.isEnabled() is True
-
-    window.data_panel.brightfield_unlock_batch_threshold_button.click()
-    app.processEvents()
-
-    assert window.data_panel.brightfield_assisted_sensitivity_combo.isEnabled() is True
-    assert window.data_panel.brightfield_assisted_small_region_filter_combo.isEnabled() is True
+    assert window.data_panel.brightfield_detection_sensitivity_combo.isEnabled() is True
 
     _close_widget(window, app)
 
@@ -1934,42 +1729,6 @@ def test_export_ihc_overlay_results_csv_and_summary_json_to_path(tmp_path) -> No
         "Review threshold shift before batch comparison.",
     ]
     assert summary["measurements"][0]["example_guided_result"]["positive_sample_count"] == 1
-
-    _close_widget(window, app)
-
-
-def test_run_ihc_analysis_blocks_coming_soon_task(tmp_path, monkeypatch) -> None:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    image_path = _write_synthetic_ihc_png(tmp_path / "synthetic_ihc_coming_soon.png")
-
-    window.set_module("ihc")
-    window.import_ihc_images([str(image_path)])
-    panel = window._active_ihc_panel()
-    called = {"count": 0}
-    messages: list[str] = []
-
-    monkeypatch.setattr(
-        panel,
-        "auto_analyze_dab",
-        lambda *args, **kwargs: called.update(count=called["count"] + 1),
-    )
-    monkeypatch.setattr(
-        QMessageBox,
-        "information",
-        lambda _parent, _title, message: messages.append(message),
-    )
-
-    window.data_panel.ihc_task_type_combo.setCurrentIndex(1)
-    window.run_ihc_analysis()
-    _wait_for_analysis(window, "ihc")
-
-    assert called["count"] == 0
-    assert messages == [
-        "Task 'hematoxylin_rich' is not implemented in this release. "
-        "Switch to 'DAB IHC / H-score' to run analysis."
-    ]
 
     _close_widget(window, app)
 
@@ -2075,7 +1834,6 @@ def test_add_ihc_outputs_to_composer_creates_external_asset_panels(tmp_path, mon
     image_b = _write_synthetic_ihc_png(tmp_path / "treated_composer.png")
 
     window.set_module("ihc")
-    window.data_panel.ihc_min_area_spin.setValue(2)
     window.import_ihc_images([str(image_a)])
     window.run_ihc_analysis()
     _wait_for_analysis(window, "ihc")
@@ -2226,13 +1984,11 @@ def test_ihc_workspace_keeps_canvas_large_and_moves_controls_off_top_row() -> No
     assert window.ihc_workspace.workflow_panel.parentWidget() is window.v9_shell.right_panel
     assert window.ihc_workspace.side_panel is window.ihc_workspace.workflow_panel
     assert window.ihc_workspace.active_image_group.isHidden() is False
-    assert window.data_panel.ihc_workflow_group.isHidden() is True
     assert window.ihc_workspace.canvas.height() > 500
     assert window.ihc_workspace.height() > 620
 
     window.set_ihc_workflow_step(1)
     assert window.ihc_workspace.active_image_group.isHidden() is False
-    assert window.data_panel.ihc_workflow_group.isHidden() is False
 
     _close_widget(window, app)
 
@@ -2260,7 +2016,6 @@ def test_ihc_module_switch_restores_layout_canvas_when_layout_step_is_active(tmp
     assert window.ihc_workspace.canvas_stack.currentWidget() is window.ihc_workspace.layout_canvas
     assert window.ihc_workspace.canvas_tools_group.isHidden() is False
     assert window.ihc_workspace.active_image_group.isHidden() is False
-    assert window.data_panel.ihc_workflow_group.isHidden() is True
 
     _close_widget(window, app)
 
@@ -2400,7 +2155,7 @@ def test_set_module_brightfield_shows_workflow_controls() -> None:
     _close_widget(window, app)
 
 
-def test_step6_import_copy_mode_labels_and_status_copy_are_visible(tmp_path) -> None:
+def test_step6_import_analysis_labels_and_status_copy_are_visible(tmp_path) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QApplication.instance() or QApplication([])
     window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
@@ -2422,15 +2177,11 @@ def test_step6_import_copy_mode_labels_and_status_copy_are_visible(tmp_path) -> 
     assert expected_import in window.data_panel.ihc_import_hint_label.text()
     assert "For CZI or ND2, export to OME-TIFF first" in window.data_panel.ihc_import_hint_label.text()
     assert "export to OME-TIFF first" in window.ihc_workspace.import_button.toolTip()
-    assert window.data_panel.ihc_measure_actions_group.title() == "Foolproof Mode"
+    assert window.data_panel.ihc_run_analysis_button.text() == tr("auto_analyze")
 
-    window.data_panel.set_ihc_guided_mode("assisted")
     app.processEvents()
-    assert window.data_panel.ihc_measure_actions_group.title() == "Assisted Mode"
 
-    window.data_panel.set_ihc_guided_mode("expert")
     app.processEvents()
-    assert window.data_panel.ihc_measure_actions_group.title() == "Expert Mode"
 
     window.import_ihc_images([str(image_path)])
     window.run_ihc_analysis()
@@ -2455,12 +2206,7 @@ def test_step6_import_copy_mode_labels_and_status_copy_are_visible(tmp_path) -> 
     assert expected_import in window.data_panel.brightfield_import_hint_label.text()
     assert "For CZI or ND2, export to OME-TIFF first" in window.data_panel.brightfield_import_hint_label.text()
     assert "export to OME-TIFF first" in window.brightfield_workspace.import_button.toolTip()
-    assert window.data_panel.brightfield_measure_group.title() == "Measure"
-
-    window.data_panel.set_brightfield_guided_mode("expert")
-    app.processEvents()
-    assert window.data_panel.brightfield_measure_group.title() == "Measure"
-    assert window.data_panel.current_brightfield_guided_mode() == 'expert'
+    assert window.data_panel.brightfield_run_analysis_button.text() == tr("auto_analyze_he")
 
     window.import_brightfield_images([str(image_path)])
     window.run_brightfield_analysis()
@@ -2561,7 +2307,6 @@ def test_brightfield_direct_path_runs_measurement_stats_and_composer(tmp_path, m
     window.data_panel.brightfield_group_edit.setText("Control")
     window.data_panel.brightfield_stain_type_combo.setCurrentText("H&E")
     window.update_brightfield_image_metadata()
-    window.data_panel.brightfield_segmentation_mode_combo.setCurrentIndex(0)
     window.preview_brightfield_segmentation()
     window.set_brightfield_workflow_step(2)
     window.set_brightfield_roi_from_canvas(QRect(0, 0, 3, 3))
@@ -3691,10 +3436,6 @@ def test_ihc_workflow_steps_switch_visible_context(tmp_path) -> None:
     window.data_panel.ihc_step_buttons[1].click()
     app.processEvents()
     assert window.data_panel.ihc_context_stack.currentIndex() == 1
-    assert window.data_panel.current_ihc_guided_mode() == "foolproof"
-    assert window.data_panel.ihc_try_assisted_button.isVisible()
-    assert not window.data_panel.ihc_positive_threshold_spin.isVisible()
-    assert not window.data_panel.ihc_guided_controls_group.isVisible()
     assert window.data_panel.ihc_roi_draw_button.isVisible()
     assert window.workflow_ui.footers['ihc'].primary.isVisible()
     assert window.workflow_ui.footers['ihc'].source is window.data_panel.ihc_run_analysis_button
@@ -3702,24 +3443,15 @@ def test_ihc_workflow_steps_switch_visible_context(tmp_path) -> None:
     assert window.data_panel.ihc_results_table.isVisible()
     assert not window.data_panel.ihc_stats_run_button.isVisible()
 
-    window.data_panel.ihc_try_assisted_button.click()
     app.processEvents()
-    assert window.data_panel.current_ihc_guided_mode() == "assisted"
-    assert window.data_panel.ihc_guided_controls_group.isVisible()
+    assert window.data_panel.ihc_threshold_calibration.isHidden()
+    window.run_ihc_analysis()
+    _wait_for_analysis(window, "ihc")
+    assert window.data_panel.ihc_threshold_calibration.isVisible()
+    window.data_panel.ihc_threshold_calibration.toggle.click()
+    app.processEvents()
     assert window.data_panel.ihc_mark_positive_button.isVisible()
     assert window.data_panel.ihc_mark_negative_button.isVisible()
-    assert window.data_panel.ihc_stop_sampling_button.isVisible()
-    assert window.data_panel.ihc_recalibrate_button.isVisible()
-    assert window.data_panel.ihc_revert_auto_button.isVisible()
-    assert window.data_panel.ihc_delete_example_button.isVisible()
-    assert window.data_panel.ihc_examples_list.isVisible()
-    assert window.data_panel.ihc_batch_threshold_label.isVisible()
-    assert window.data_panel.ihc_overlay_opacity_slider.isVisible()
-
-    window.data_panel.set_ihc_guided_mode("expert")
-    app.processEvents()
-    assert not window.data_panel.ihc_guided_controls_group.isVisible()
-    assert window.data_panel.ihc_positive_threshold_spin.isVisible()
 
     window.data_panel.ihc_step_buttons[2].click()
     app.processEvents()

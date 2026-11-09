@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import sys
 
-from PyQt6.QtCore import Qt, QSize, QTimer, QEvent, pyqtSignal, QVariantAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QRect, QSize, QTimer, QEvent, pyqtSignal, QVariantAnimation, QEasingCurve
 from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -28,6 +28,18 @@ MAX_RAIL_WIDTH = 220
 MIN_RIGHT_WIDTH = 240
 DEFAULT_RIGHT_WIDTH = 300 if sys.platform in {'darwin', 'win32'} else 360
 MAX_RIGHT_WIDTH = 640
+
+
+class _RightSidebarLayout(QVBoxLayout):
+    """Keep workflow controls laid out at full width while the splitter clips them."""
+
+    transition_width: int | None = None
+
+    def setGeometry(self, rect: QRect) -> None:
+        if self.transition_width is not None:
+            rect = QRect(rect)
+            rect.setWidth(self.transition_width)
+        super().setGeometry(rect)
 
 
 class V9AppShell(QWidget):
@@ -304,7 +316,7 @@ class V9AppShell(QWidget):
         self.right_panel.setObjectName("V9RightPanel")
         self.right_panel.setMinimumWidth(MIN_RIGHT_WIDTH)
         self.right_panel.setMaximumWidth(MAX_RIGHT_WIDTH)
-        self.right_layout = QVBoxLayout(self.right_panel)
+        self.right_layout = _RightSidebarLayout(self.right_panel)
         self.right_layout.setContentsMargins(0, 0, 0, 0)
         self.right_layout.setSpacing(0)
         header = QFrame()
@@ -610,6 +622,14 @@ class V9AppShell(QWidget):
         stage_width = max(minimum_stage_width, total - rail_width - right_width)
         target = [rail_width, stage_width, right_width]
         if animate and motion_enabled() and self.isVisible() and start_sizes:
+            animate_right = start_sizes[2] != right_width
+            if animate_right:
+                margins = self.right_panel.contentsMargins()
+                width = max(start_sizes[2], right_width) - margins.left() - margins.right()
+                if self._right_collapsed and self.right_layout.transition_width is not None:
+                    width = max(width, self.right_layout.transition_width)
+                self.right_layout.transition_width = width
+                self.right_layout.setGeometry(self.right_panel.contentsRect())
             self._module_selector.show()
             for panel in (self.rail_panel, self.right_panel):
                 panel.setMinimumWidth(0)
@@ -617,8 +637,8 @@ class V9AppShell(QWidget):
                 panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
             animation = QVariantAnimation(self)
             self._splitter_animation = animation
-            animation.setDuration(160)
-            animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            animation.setDuration(180 if animate_right else 160)
+            animation.setEasingCurve(QEasingCurve.Type.InOutSine if animate_right else QEasingCurve.Type.OutCubic)
             animation.setStartValue(0.0)
             animation.setEndValue(1.0)
             animation.valueChanged.connect(lambda value: self.body_splitter.setSizes([
@@ -629,6 +649,9 @@ class V9AppShell(QWidget):
             self._finish_splitter_transition(target)
 
     def _finish_splitter_transition(self, target):
+        if self.right_layout.transition_width is not None and not self.is_right_panel_collapsed():
+            self.right_layout.transition_width = None
+            self.right_layout.invalidate()
         for panel, closed, minimum, maximum in (
             (self.rail_panel, self._rail_collapsed, MIN_RAIL_WIDTH, MAX_RAIL_WIDTH),
             (self.right_panel, self.is_right_panel_collapsed(), MIN_RIGHT_WIDTH, MAX_RIGHT_WIDTH),

@@ -6,16 +6,16 @@ from PyQt6.QtWidgets import QApplication
 from ui.main_window import MainWindow
 
 
-def test_optional_backends_parameters_and_legacy_defaults():
+def test_preferred_backends_and_parameters():
     app = QApplication.instance() or QApplication([])
     window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / 'resources')
     try:
         controls, workspace = window.data_panel, window.fluoro_workspace
-        assert controls.brightfield_he_fiber_method_combo.currentData() == 'original'
-        assert workspace.ai_backend_combo.currentData() == 'local_heuristic'
+        assert controls.brightfield_he_fiber_method_combo.currentData() == 'cellpose_cyto3'
+        assert workspace.ai_backend_combo.currentData() == 'cellpose_cyto3'
         controls.set_brightfield_he_fiber_analysis_settings({
             'he_fiber_segmentation_method': 'cellpose_cyto3', 'he_fiber_cellpose_diameter_px': 75})
-        assert controls.brightfield_analysis_settings()['he_fiber_cellpose_diameter_px'] == 75
+        assert controls.brightfield_he_fiber_analysis_settings()['he_fiber_cellpose_diameter_px'] == 75
         assert controls.brightfield_he_fiber_cellpose_diameter_spin.isEnabled()
         assert not controls.brightfield_he_fiber_splitting_slider.isEnabled()
         workspace.set_ai_analysis_settings({'backend': 'cellpose_cyto3', 'cellpose_diameter_px': 55})

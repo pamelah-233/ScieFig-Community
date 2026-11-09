@@ -43,7 +43,7 @@ def test_preview_cursor_keeps_same_source_pixel_over_repeated_zoom():
     canvas.close()
 
 
-def test_preview_space_pan_works_at_fit_without_selecting_roi():
+def test_preview_space_pan_requires_zoom_overflow_without_selecting_roi():
     canvas = show(PreviewCanvas())
     pix = QPixmap(800,600)
     pix.fill(Qt.GlobalColor.white)
@@ -60,8 +60,18 @@ def test_preview_space_pan_works_at_fit_without_selecting_roi():
     QTest.mouseMove(label, point + QPoint(40,25))
     QTest.mouseRelease(label, Qt.MouseButton.LeftButton, pos=point + QPoint(40,25))
     QTest.keyRelease(label, Qt.Key.Key_Space)
+    assert canvas._fit_mode
+    assert label.mapToGlobal(QPoint()) == before
+    canvas.zoom_by(2)
+    QTest.qWait(50)
+    before = label.mapToGlobal(QPoint())
+    point = label.mapFromGlobal(canvas.scroll_area.viewport().mapToGlobal(canvas.scroll_area.viewport().rect().center()))
+    QTest.keyPress(label, Qt.Key.Key_Space)
+    QTest.mousePress(label, Qt.MouseButton.LeftButton, pos=point)
+    QTest.mouseMove(label, point + QPoint(40,25))
+    QTest.mouseRelease(label, Qt.MouseButton.LeftButton, pos=point + QPoint(40,25))
+    QTest.keyRelease(label, Qt.Key.Key_Space)
     assert not received
-    assert not canvas._fit_mode
     assert (label.mapToGlobal(QPoint()) - before).manhattanLength() >= 40
     zoom = canvas._zoom_factor
     canvas.resize(680,520)
@@ -92,7 +102,7 @@ def test_matplotlib_page_and_export_dimensions_do_not_change_with_view(tmp_path)
     canvas.close()
 
 
-def test_style_source_can_pan_at_fit_without_changing_crop():
+def test_style_source_can_pan_only_after_zoom_without_changing_crop():
     from ui.local_style_extraction.source_canvas import SourceCanvas
     canvas = show(SourceCanvas(), 400,300)
     canvas._pixmap = QPixmap(800,600)
@@ -101,7 +111,10 @@ def test_style_source_can_pan_at_fit_without_changing_crop():
     canvas.fit_to_canvas()
     QTest.qWait(20)
     before = canvas._norm_from_pos(QPointF(200,150))
-    canvas._view_controller.begin_pan()
+    canvas._view_controller.pan_by(40,20)
+    assert canvas._norm_from_pos(QPointF(200,150)) == before
+    canvas.zoom_by(2)
+    before = canvas._norm_from_pos(QPointF(200,150))
     canvas._view_controller.pan_by(40,20)
     QTest.qWait(20)
     assert canvas._norm_from_pos(QPointF(200,150)) != before
@@ -158,6 +171,7 @@ def test_style_both_renderers_keep_offcenter_cursor():
                 r = canvas.image_rect()
                 return (150-r.x())/r.width(), (110-r.y())/r.height()
         canvas.fit_to_canvas()
+        canvas.zoom_by(2)
         before = point()
         for _ in range(5):
             wheel(canvas, QPoint(150,110))
@@ -252,11 +266,15 @@ def test_plain_wheel_scrolls_style_without_changing_zoom():
     view = show(ScaledView('preview'), 400,300)
     view._pix = QPixmap(800,600)
     view.fit_to_canvas()
-    before = view.image_rect()
-    zoom = view._zoom_factor
+    fitted = view.image_rect()
     pos = view.rect().center()
     event = QWheelEvent(QPointF(pos),QPointF(view.mapToGlobal(pos)),QPoint(),QPoint(0,-120),
                         Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier,Qt.ScrollPhase.ScrollUpdate,False)
+    QApplication.sendEvent(view,event)
+    assert view._fit_mode and view.image_rect() == fitted
+    view.zoom_by(2)
+    before = view.image_rect()
+    zoom = view._zoom_factor
     QApplication.sendEvent(view,event)
     assert view._zoom_factor == zoom
     assert view.image_rect().y() < before.y()

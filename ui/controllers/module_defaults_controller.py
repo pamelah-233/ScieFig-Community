@@ -96,6 +96,7 @@ class ModuleDefaultsController(QObject):
                     if image:image['myotube_method']=deck.controllers['myotube'].controls.method.currentData()
                 if module=='ihc':
                     w.data_panel.set_ihc_overlay_opacity(w.data_panel.ihc_overlay_opacity())
+                    w.update_ihc_detection_sensitivity()
             elif module=='wb':
                 panel=w._active_wb_panel()
                 if panel.data.get('image_data'):

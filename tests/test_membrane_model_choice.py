@@ -56,14 +56,14 @@ def test_new_membrane_failure_does_not_fall_back_to_original(monkeypatch, tmp_pa
     assert not record.get('fluorescence_ai_assisted_measurements')
 
 
-def test_membrane_choice_and_reference_load_preserve_legacy_defaults(qt_application):
+def test_membrane_choice_and_reference_load(qt_application):
     from ui.main_window import MainWindow
     from core.utils.i18n import get_language,set_language,tr
     previous = get_language()
     window = MainWindow(resources_dir=Path(__file__).resolve().parents[1]/'resources')
     try:
         workspace=window.fluoro_workspace
-        assert workspace.ai_backend_combo.currentData()=='local_heuristic'
+        assert workspace.ai_backend_combo.currentData()=='cellpose_cyto3'
         workspace.set_ai_analysis_settings(dict(backend='cellpose_cyto3',cellpose_diameter_px=100,min_object_area_px=80))
         old=workspace.ai_analysis_settings()
         index=workspace.ai_backend_combo.findData(BACKEND)

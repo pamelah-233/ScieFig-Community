@@ -63,42 +63,6 @@ def _stub_bf_images(window) -> None:
     return panel
 
 
-def test_ihc_image_a_b_a_and_method_switch_restore_widgets(monkeypatch):
-    from ui.main_window import MainWindow
-
-    app = _app()
-    window = MainWindow(resources_dir=ROOT / "resources")
-    monkeypatch.setattr(window, "_refresh_ihc_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
-    try:
-        window.set_module("ihc")
-        panel = _stub_ihc_images(window)
-        window.select_ihc_image("image-a")
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.0, "weak_threshold": 0.11, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
-        window.select_ihc_image("image-b")
-        window.data_panel.set_ihc_guided_mode("assisted")
-        window.data_panel.set_ihc_guided_analysis_settings(
-            {"sensitivity": "high", "cleanup_level": "low", "tissue_background_correction": False}
-        )
-        window.select_ihc_image("image-a")
-        assert window.data_panel.current_ihc_guided_mode() == "expert"
-        restored = window.data_panel.ihc_analysis_settings()
-        assert restored["positive_threshold"] == 0.0
-        assert restored["weak_threshold"] == 0.11
-        assert restored["tissue_mask_enabled"] is False
-        window.select_ihc_image("image-b")
-        assert window.data_panel.current_ihc_guided_mode() == "assisted"
-        assert window.data_panel.ihc_guided_analysis_settings()["sensitivity"] == "high"
-        assert window.data_panel.ihc_guided_analysis_settings()["tissue_background_correction"] is False
-        state = panel.data.get("analysis_ui_state_by_image")
-        assert "image-a" in state and "image-b" in state
-    finally:
-        _close_window(app, window)
-
-
 def test_brightfield_he_and_cells_image_method_switch(monkeypatch):
     from ui.main_window import MainWindow
 
@@ -120,7 +84,7 @@ def test_brightfield_he_and_cells_image_method_switch(monkeypatch):
         window.data_panel.set_cell_analysis_settings({"backend": "cellpose", "residual_threshold": 0.0, "min_circularity": 0.05})
         window.select_brightfield_image("image-a")
         assert combo.currentData() == "fiber"
-        fiber = window.data_panel.brightfield_analysis_settings()
+        fiber = window.data_panel.brightfield_he_fiber_analysis_settings()
         assert fiber["he_fiber_segmentation_method"] == "anti_oversegmentation"
         assert fiber["he_fiber_splitting_sensitivity"] == 0
         window.select_brightfield_image("image-b")
@@ -186,10 +150,6 @@ def test_project_roundtrip_restores_module_step_image_overlay_and_selection(monk
         window.data_panel.set_ihc_step(1, emit_signal=False)
         panel.data["active_step"] = 1
         window.select_ihc_image("image-b")
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.0, "weak_threshold": 0.2, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
         measurement = {"measurement_uuid": "row-b", "image_uid": "image-b", "results": {"positive_area_percent": 3}}
         panel.analysis["ihc_measurements"] = [measurement]
         window.data_panel.populate_ihc_measurements([measurement])
@@ -205,10 +165,8 @@ def test_project_roundtrip_restores_module_step_image_overlay_and_selection(monk
         assert window.ihc_workspace.current_preview_mode() == "overlay"
         overlay_requests = []
         monkeypatch.setattr(window.ihc_workspace, "show_overlay_preview", lambda: overlay_requests.append("overlay"))
-        window.analysis_state.capture_outgoing("ihc")
         window.analysis_state.capture_session()
         payload = window.project.to_dict()
-        assert "analysis_ui_state_by_image" in payload["panels"][4]["data"] or "analysis_ui_state_by_image" in panel.data
         restored_project = Project.from_dict(deepcopy(payload))
         assert restored_project.session_ui_state["preview_mode_by_module"]["ihc"] == "overlay"
         window.project = restored_project
@@ -217,8 +175,6 @@ def test_project_roundtrip_restores_module_step_image_overlay_and_selection(monk
         restored_panel = window._active_ihc_panel()
         assert int(restored_panel.data.get("active_step", 0)) == 1
         assert restored_panel.data.get("active_image_uid") == "image-b"
-        assert window.data_panel.current_ihc_guided_mode() == "expert"
-        assert window.data_panel.ihc_analysis_settings()["positive_threshold"] == 0.0
         assert window.data_panel.selected_ihc_measurement_uuid() == "row-b"
         assert overlay_requests == ["overlay"]
     finally:
@@ -257,127 +213,11 @@ def test_ui_state_write_does_not_change_fingerprint_but_actual_params_do(monkeyp
         window.set_module("ihc")
         panel = _stub_ihc_images(window)
         fp = analysis_job_fingerprint(panel)
-        window.analysis_state.capture_outgoing("ihc")
-        assert "analysis_ui_state_by_image" in panel.data
         assert analysis_job_fingerprint(panel) == fp
         settings = dict(panel.data.get("analysis_settings") or {})
         settings["positive_threshold"] = 0.01
         panel.data["analysis_settings"] = settings
         assert analysis_job_fingerprint(panel) != fp
-    finally:
-        _close_window(app, window)
-
-
-def test_method_switch_preserves_other_method_settings(monkeypatch):
-    from ui.main_window import MainWindow
-
-    app = _app()
-    window = MainWindow(resources_dir=ROOT / "resources")
-    monkeypatch.setattr(window, "_refresh_ihc_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
-    try:
-        window.set_module("ihc")
-        _stub_ihc_images(window)
-        window.select_ihc_image("image-a")
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.0, "weak_threshold": 0.11, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
-        window.data_panel.set_ihc_guided_mode("assisted")
-        window.data_panel.set_ihc_guided_analysis_settings({"sensitivity": "high", "cleanup_level": "low", "tissue_background_correction": False})
-        window.data_panel.set_ihc_guided_mode("expert")
-        restored = window.data_panel.ihc_analysis_settings()
-        assert restored["weak_threshold"] == 0.11
-        assert restored["positive_threshold"] == 0.0
-        window.data_panel.set_ihc_guided_mode("assisted")
-        assert window.data_panel.ihc_guided_analysis_settings()["sensitivity"] == "high"
-        assert window.data_panel.ihc_guided_analysis_settings()["tissue_background_correction"] is False
-    finally:
-        _close_window(app, window)
-
-
-def test_leaving_module_saves_pending_edits_before_capture_session(monkeypatch):
-    from ui.main_window import MainWindow
-
-    app = _app()
-    window = MainWindow(resources_dir=ROOT / "resources")
-    monkeypatch.setattr(window, "_refresh_ihc_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(window, "_refresh_brightfield_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
-    try:
-        window.set_module("ihc")
-        panel = _stub_ihc_images(window)
-        window.select_ihc_image("image-a")
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.0, "weak_threshold": 0.11, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
-        window.set_module("brightfield")
-        window.analysis_state.capture_session()
-        assert window.project.session_ui_state["active_module"] == "brightfield"
-        assert panel.data["analysis_ui_state_by_image"]["image-a"]["expert"]["weak_threshold"] == 0.11
-    finally:
-        _close_window(app, window)
-
-
-def test_open_restore_does_not_capture_old_widgets_into_loaded_project(monkeypatch):
-    from ui.main_window import MainWindow
-
-    app = _app()
-    window = MainWindow(resources_dir=ROOT / "resources")
-    monkeypatch.setattr(window, "_refresh_ihc_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
-    try:
-        window.set_module("ihc")
-        panel = _stub_ihc_images(window)
-        window.select_ihc_image("image-a")
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.11, "weak_threshold": 0.2, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
-        window.analysis_state.capture_outgoing("ihc")
-        window.analysis_state.capture_session()
-        payload = deepcopy(window.project.to_dict())
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.99, "weak_threshold": 0.99, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
-        window.project = Project.from_dict(payload)
-        window.analysis_state.restore_session()
-        restored = window._active_ihc_panel()
-        assert restored.data["analysis_ui_state_by_image"]["image-a"]["expert"]["positive_threshold"] == 0.11
-        assert window.data_panel.ihc_analysis_settings()["positive_threshold"] == 0.11
-        assert restored is not panel
-    finally:
-        _close_window(app, window)
-
-
-def test_postanalysis_snapshot_keeps_per_image_params_across_image_switch(monkeypatch):
-    from ui.main_window import MainWindow
-
-    app = _app()
-    window = MainWindow(resources_dir=ROOT / "resources")
-    monkeypatch.setattr(window, "_refresh_ihc_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
-    try:
-        window.set_module("ihc")
-        panel = _stub_ihc_images(window)
-        window.select_ihc_image("image-a")
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.0, "weak_threshold": 0.11, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
-        window.analysis_state.capture_outgoing("ihc")
-        stored = deepcopy(panel.data["analysis_ui_state_by_image"])
-        result_panel = type(panel).from_dict(deepcopy(panel.to_dict()))
-        result_panel.data["analysis_ui_state_by_image"] = {}
-        window._apply_analysis_panel_snapshot(panel, result_panel)
-        assert panel.data["analysis_ui_state_by_image"] == stored
-        window.select_ihc_image("image-b")
-        window.data_panel.set_ihc_guided_mode("assisted")
-        window.select_ihc_image("image-a")
-        assert window.data_panel.current_ihc_guided_mode() == "expert"
-        assert window.data_panel.ihc_analysis_settings()["weak_threshold"] == 0.11
-        assert window.data_panel.ihc_analysis_settings()["positive_threshold"] == 0.0
     finally:
         _close_window(app, window)
 
@@ -493,10 +333,6 @@ def test_sfig_save_load_restores_params_selection_ids_without_reanalysis(tmp_pat
         window.data_panel.set_ihc_step(1, emit_signal=False)
         panel.data["active_step"] = 1
         window.select_ihc_image("image-b")
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.0, "weak_threshold": 0.2, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 0, "tissue_mask_enabled": False}
-        )
         measurement = {"measurement_uuid": "row-b", "image_uid": "image-b", "results": {"positive_area_percent": 3}}
         panel.analysis["ihc_measurements"] = [measurement]
         window.data_panel.populate_ihc_measurements([measurement])
@@ -511,7 +347,6 @@ def test_sfig_save_load_restores_params_selection_ids_without_reanalysis(tmp_pat
         window.ihc_workspace.show_overlay_preview()
         overlay_requests = []
         monkeypatch.setattr(window.ihc_workspace, "show_overlay_preview", lambda: overlay_requests.append("overlay"))
-        window.analysis_state.capture_outgoing("ihc")
         window.analysis_state.capture_session()
         target = tmp_path / "stage2_restore.sfig"
         window.project.save_sfig(target)
@@ -520,12 +355,9 @@ def test_sfig_save_load_restores_params_selection_ids_without_reanalysis(tmp_pat
         loaded_panel = next(item for item in loaded.panels if getattr(item, "panel_type", "") == "ihc")
         assert loaded_panel.analysis["ihc_measurements"][0]["measurement_uuid"] == "row-b"
         assert loaded_panel.analysis["ihc_measurements"][0]["results"] == {"positive_area_percent": 3}
-        assert loaded_panel.data["analysis_ui_state_by_image"]["image-b"]["expert"]["positive_threshold"] == 0.0
         window.project = loaded
         window.analysis_state.restore_session()
         assert window.active_module == "ihc"
-        assert window.data_panel.current_ihc_guided_mode() == "expert"
-        assert window.data_panel.ihc_analysis_settings()["positive_threshold"] == 0.0
         assert window.data_panel.selected_ihc_measurement_uuid() == "row-b"
         assert overlay_requests == ["overlay"]
         assert runs == []

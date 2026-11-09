@@ -144,6 +144,12 @@ class BatchAnalysisJob:
                 raise ValueError("Analysis returned no measurement records; the backend may be unavailable.")
             if any(not isinstance(record, dict) or not measurement_id(record) for record in records):
                 raise ValueError("Analysis did not return identifiable measurement records.")
+            if self.method == "auto_analyze_dab":
+                batch_threshold = (snapshot.data.get("guided_state") or {}).get("batch_threshold_state")
+                if batch_threshold and batch_threshold.get("locked"):
+                    # A fresh IHC batch uses the first successful image as its threshold reference.
+                    self._source.data.setdefault("guided_state", {})["batch_threshold_state"] = deepcopy(batch_threshold)
+                    provenance["batch_threshold_state"] = deepcopy(batch_threshold)
             provenance["completed_at"] = utc_now_iso()
             records = deepcopy(records)
             for record in records:
@@ -180,6 +186,17 @@ def apply_batch_image_result(panel, result: BatchImageResult) -> bool:
         image.setdefault(image_key, []).extend(rows)
     if method == "measure_bright_round_cells":
         panel.analysis["bright_round_cell_diameter"] = rows[-1]
+    if method == "auto_analyze_dab":
+        guided = panel.data.setdefault("guided_state", {})
+        latest = measurement_id(rows[-1])
+        guided.setdefault("auto_measurement_uuid_by_image", {})[result.image_uid] = latest
+        guided.setdefault("last_active_measurement_uuid_by_image", {})[result.image_uid] = latest
+        batch_threshold = guided.setdefault("batch_threshold_state", {})
+        reference = result.provenance.get("batch_threshold_state")
+        if reference and (batch_threshold.get("batch_threshold") is None or not batch_threshold.get("locked")):
+            for key in ("task_id", "batch_threshold", "batch_threshold_source_image", "batch_threshold_method", "locked"):
+                batch_threshold[key] = reference.get(key)
+        batch_threshold.get("example_guided_overrides", {}).pop(result.image_uid, None)
     statistics_key = "fluoro_statistics" if panel.panel_type == "fluorescence" else f"{panel.panel_type}_statistics"
     panel.analysis.pop(statistics_key, None)
     if method == "create_ai_object_count_measurement":

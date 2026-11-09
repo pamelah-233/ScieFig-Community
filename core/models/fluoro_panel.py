@@ -782,6 +782,8 @@ class FluorescencePanel(BasePanel):
             context['channels']=[{key:deepcopy(ch.get(key)) for key in
                 ('index','display_min','display_max','display_processing')} for ch in image.get('channels',[])]
             context['intensity_range']='0-255; per-channel grayscale, no annotations or pseudocolor'
+            if rgb_interpretation_mode(image) == RGB_COMPOSITE_MODE:
+                context['rgb_display'] = deepcopy(image.get('rgb_display'))
         return context
 
     def segmentation_input_data(self,image_uid: str,*,raw_data=None) -> np.ndarray:
@@ -793,6 +795,12 @@ class FluorescencePanel(BasePanel):
         if source is None:raise FileNotFoundError('Fluorescence source image data is not available.')
         data=self._analysis_stack(image,source)
         if image.get('segmentation_input','raw')!='adjusted':return data
+        if rgb_interpretation_mode(image) == RGB_COMPOSITE_MODE:
+            from core.plotting.fluoro_render import rgb_display_intensity
+            intensity = rgb_display_intensity(source, image.get('rgb_display') or {})
+            if source.shape[0] == 4:
+                intensity[source[3] == 0] = 0
+            return intensity[None, ...]
         channels={int(ch.get('index',0)):ch for ch in image.get('channels',[])}
         result=np.empty(data.shape,np.uint8)
         for index,plane in enumerate(data):
@@ -1423,6 +1431,13 @@ class FluorescencePanel(BasePanel):
             return
         raise KeyError(f"Fluorescence image not found: {image_uid}")
 
+    def update_rgb_display(self, image_uid: str, **updates: Any) -> None:
+        image = next((item for item in self.images() if item.get("uid") == image_uid), None)
+        if image is None:
+            raise KeyError(f"Fluorescence image not found: {image_uid}")
+        display = {**(image.get("rgb_display") or {}), **updates}
+        self._update_image_record(image_uid, {"rgb_display": display}, "update_fluorescence_rgb_display")
+
     def set_view_mode(self, image_uid: str, view_mode: str) -> None:
         if view_mode not in {"merge", "split", "single"}:
             raise ValueError(f"Unsupported fluorescence view mode: {view_mode}")
@@ -1657,12 +1672,13 @@ class FluorescencePanel(BasePanel):
         if scope not in {"all_channels", "selected_channel"}:
             raise ValueError(f"Unsupported black balance scope: {scope}")
         image = next((item for item in self.images() if item.get("uid") == image_uid), {})
+        interpretation = rgb_interpretation_mode(image)
         if scope == "selected_channel":
             source_channel = geometry.get("source_channel_index")
-            if source_channel is None:
-                source_channel = 0
-            channel_indices = [int(source_channel)]
-        elif rgb_interpretation_mode(image) in {RGB_COMPOSITE_MODE, FORCED_RGB_SPLIT_MODE}:
+            if source_channel is None or not 0 <= int(source_channel) < min(data.shape[0], len(image.get("channels", []))):
+                raise ValueError("Black balance requires a valid target channel.")
+            channel_indices = list(range(3)) if interpretation == RGB_COMPOSITE_MODE else [int(source_channel)]
+        elif interpretation in {RGB_COMPOSITE_MODE, FORCED_RGB_SPLIT_MODE}:
             channel_indices = list(range(min(3, int(data.shape[0]))))
         else:
             channel_indices = list(range(int(image.get('merged_signal_channels', data.shape[0]))))
@@ -1679,6 +1695,19 @@ class FluorescencePanel(BasePanel):
             "geometry": clean_geometry,
             "channel_backgrounds": backgrounds,
         }
+        if scope == "selected_channel":
+            previous = image.get("background_correction") or {}
+            previous_backgrounds = {int(key): value for key, value in previous.get("channel_backgrounds", {}).items()}
+            previous_references = previous.get("channel_references", {})
+            references = {
+                str(index): previous_references.get(str(index), {
+                    "roi_type": previous.get("roi_type"), "geometry": previous.get("geometry"),
+                })
+                for index in previous_backgrounds
+            }
+            references.update({str(index): {"roi_type": roi_type, "geometry": clean_geometry} for index in channel_indices})
+            correction["channel_references"] = references
+            correction["channel_backgrounds"] = {**previous_backgrounds, **backgrounds}
         images = self.images()
         for image in images:
             if image.get("uid") == image_uid:

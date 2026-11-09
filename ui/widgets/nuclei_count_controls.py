@@ -26,18 +26,22 @@ class NucleiCountControls(QWidget):
         self.object_kind=QComboBox()
         for kind in ('nuclei','cells','spots'):self.object_kind.addItem(tr('relation_kind_'+kind),kind)
         if module!='fluoro':self.object_kind.hide()
-        self.method=QComboBox();self.method.addItem(tr('nuclei_cellpose'),'cellpose_nuclei');self.method.addItem(tr('nuclei_watershed'),'watershed')
+        self.method=QComboBox()
         if module=='fluoro':
-            self.method.insertItem(0,tr('nuclei_cyto3'),'cellpose_cyto3')
-            self.method.insertItem(1,tr('nuclei_cyto3_reviewed'),'cellpose_cyto3_dapi_reviewed_v1')
+            self.method.addItem(tr('nuclei_watershed'),'watershed')
+            self.method.addItem(tr('nuclei_cyto3'),'cellpose_cyto3')
+            self.method.addItem(tr('nuclei_cyto3_reviewed'),'cellpose_cyto3_dapi_reviewed_v1')
+            self.method.addItem(tr('nuclei_cellpose'),'cellpose_nuclei')
+        else:
+            self.method.addItem(tr('nuclei_he_pale'),'cellpose_cyto3_he_pale_v1')
+            self.method.addItem(tr('nuclei_cyto3'),'cellpose_cyto3')
+            self.method.addItem(tr('nuclei_he_refined'),'he_refined')
+            self.method.addItem(tr('nuclei_he_round'),'he_round')
+            self.method.addItem(tr('nuclei_watershed'),'watershed')
+            self.method.addItem(tr('nuclei_cellpose'),'cellpose_nuclei')
         self.method.setMinimumWidth(0)
         self.method.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.method.setMinimumContentsLength(12)
-        if module=='brightfield':
-            self.method.addItem(tr('nuclei_he_round'),'he_round')
-            self.method.addItem(tr('nuclei_he_refined'),'he_refined')
-            self.method.addItem(tr('nuclei_cyto3'),'cellpose_cyto3')
-            self.method.addItem(tr('nuclei_he_pale'),'cellpose_cyto3_he_pale_v1')
         form.addRow(bind_i18n(QLabel(),'nuclei_method'),self.method)
         self.model_hint=ModelSelectionHint(self.method,dict(cellpose_nuclei='nuclei',cellpose_cyto3='cyto3',
             cellpose_cyto3_dapi_reviewed_v1='cyto3_dapi_reviewed_v1',cellpose_cyto3_he_pale_v1='cyto3'))
@@ -98,8 +102,7 @@ class NucleiCountControls(QWidget):
         layout.addWidget(self.body);self.body.hide()
         self.entry.toggled.connect(self.body.setVisible)
         self.sync_task()
-        if module=='fluoro':self.set_parameters({})
-        self._sync_method()
+        self.set_parameters({})
 
     def _sync_method(self):
         method=self.method.currentData()
@@ -144,12 +147,15 @@ class NucleiCountControls(QWidget):
 
     def set_parameters(self,params):
         if self.module=='brightfield' and not params:
-            params=dict(method='cellpose_nuclei',diameter_px=17,min_area_px=8,max_area_px=2000)
+            params=dict(method=self.method.itemData(0),diameter_px=17,min_area_px=8,max_area_px=500)
         if self.module=='fluoro':
-            method=params.get('method','cellpose_cyto3')
+            method=params.get('method',self.method.itemData(0))
             cyto=method in ('cellpose_cyto3','cellpose_cyto3_dapi_reviewed_v1')
-            params={**dict(method=method,diameter_px=25 if cyto else 17,min_area_px=50 if cyto else 8,
-                           max_area_px=2000,cellpose_input='tile_normalization' if cyto else 'raw'),**params}
+            if method=='watershed':
+                defaults=dict(diameter_px=9,min_area_px=8,max_area_px=300)
+            else:
+                defaults=dict(diameter_px=25 if cyto else 17,min_area_px=50 if cyto else 8,max_area_px=2000)
+            params={**defaults,'method':method,'cellpose_input':'tile_normalization' if cyto else 'raw',**params}
         self.object_kind.setCurrentIndex(self.object_kind.findData(params.get('object_kind','nuclei')))
         for name,key in [('method','method'),('diameter','diameter_px'),('minimum','min_area_px'),('maximum','max_area_px')]:
             if key not in params:continue

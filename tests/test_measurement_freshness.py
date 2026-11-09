@@ -189,14 +189,11 @@ def test_window_status_label_and_attempt_states():
         window.data_panel.ihc_results_table.blockSignals(False)
         window._refresh_result_freshness_status()
         assert window.data_panel.ihc_freshness_status_label.text() == tr("result_status_unknown")
-        window.data_panel.set_ihc_guided_mode("assisted")
         current = window._current_analysis_inputs("ihc")
         attach_analysis_inputs(legacy, current)
         window._refresh_result_freshness_status()
         assert window.data_panel.ihc_freshness_status_label.text() == tr("result_status_current")
-        window.data_panel.ihc_sensitivity_combo.setCurrentIndex(
-            max(0, window.data_panel.ihc_sensitivity_combo.findData("high"))
-        )
+        panel.active_image()["segmentation_input"] = "adjusted"
         window._refresh_result_freshness_status()
         assert window.data_panel.ihc_freshness_status_label.text() == tr("result_status_stale")
         window.data_panel.set_ihc_overlay_opacity(0.95)
@@ -253,12 +250,7 @@ def test_success_attaches_invocation_inputs_not_later_widget_values(monkeypatch)
     monkeypatch.setattr(IHCPanel, "auto_analyze_dab", fake_ihc)
     controller = IHCAnalysisController(
         get_panel=lambda: panel,
-        get_expert_settings=lambda: {},
-        get_assisted_settings=lambda: {"sensitivity": "medium"},
-        get_foolproof_settings=lambda: {"sensitivity": "medium"},
-        get_current_mode=lambda: "foolproof",
         get_overlay_opacity=lambda: 0.35,
-        get_current_task_type=lambda: "ihc_dab",
         get_examples_for_image=lambda _uid: [],
         clear_examples_for_image=lambda _uid: None,
         clear_example_click_mode=lambda: None,
@@ -306,42 +298,6 @@ def _stub_ihc_image(window) -> None:
     }]
     panel.data["active_image_uid"] = "image-1"
     return panel
-
-
-def test_expert_weak_threshold_and_row_select_refresh_via_signals(monkeypatch):
-    from PyQt6.QtWidgets import QMessageBox
-    from ui.main_window import MainWindow
-
-    app = _app()
-    window = MainWindow(resources_dir=Path(__file__).resolve().parents[1] / "resources")
-    monkeypatch.setattr(window, "_refresh_ihc_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
-    try:
-        window.set_module("ihc")
-        window.data_panel.set_ihc_guided_mode("expert")
-        panel = _stub_ihc_image(window)
-        current = window._current_analysis_inputs("ihc")
-        first = {"measurement_uuid": "row-a", "image_uid": "image-1", "results": {"positive_area_percent": 1}}
-        second = {"measurement_uuid": "row-b", "image_uid": "image-1", "results": {"positive_area_percent": 2}}
-        attach_analysis_inputs(first, current)
-        attach_analysis_inputs(second, build_analysis_inputs(
-            method="ihc",
-            settings={**dict(current["settings"]), "weak_threshold": 0.99},
-            image_uid="image-1",
-            roi=current.get("roi"),
-            calibration=current.get("calibration"),
-        ))
-        panel.analysis["ihc_measurements"] = [first, second]
-        window.data_panel.populate_ihc_measurements([first, second])
-        window.data_panel.select_ihc_measurement("row-a")
-        assert window.data_panel.ihc_freshness_status_label.text() == tr("result_status_current")
-        window.data_panel.select_ihc_measurement("row-b")
-        assert window.data_panel.ihc_freshness_status_label.text() == tr("result_status_stale")
-        window.data_panel.select_ihc_measurement("row-a")
-        window.data_panel.ihc_weak_threshold_spin.setValue(0.11)
-        assert window.data_panel.ihc_freshness_status_label.text() == tr("result_status_stale")
-    finally:
-        _close_window(app, window)
 
 
 def test_he_splitting_slider_and_roi_change_refresh_via_signals(monkeypatch):

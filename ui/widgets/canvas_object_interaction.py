@@ -284,7 +284,6 @@ class CanvasObjectInteraction(QObject):
             from ui.widgets.canvas_graphics_adapter import view_controller_of
             controller = view_controller_of(self.view)
             if controller is not None:
-                controller.begin_pan()
                 controller.pan_by(dx, dy)
                 self._move(self.modifiers)
 

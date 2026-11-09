@@ -43,7 +43,9 @@ from .engine_bind import DEMO_DIR, bind_engine
 from .source_canvas import SourceBoard, normalize_rect
 from ui.widgets.canvas_presentation import content_frame_rect, paint_canvas_paper, paint_canvas_surround
 from ui.widgets.canvas_graphics_adapter import as_viewport_point
-from ui.widgets.canvas_view_controller import CanvasNavigationFilter, SceneCanvasOwnerMixin, attach_canvas_controller
+from ui.widgets.canvas_view_controller import (
+    CanvasNavigationFilter, SceneCanvasOwnerMixin, attach_canvas_controller, clamp_canvas_offset,
+)
 from ui.widgets.canvas_zoom import CanvasZoomControls, FIT_VIEWPORT_MARGIN_PX, ZOOM_STEP, actual_zoom_factor, next_manual_zoom
 from .token_editor import MIN_TOKEN_KEYS, TokenEditor, format_key_list
 from .ui_theme import stylesheet
@@ -167,21 +169,21 @@ class ScaledViewBackend:
 
     def restore_scale(self, factor):
         self.view._view_zoom = actual_zoom_factor(factor)
-        self.view.update()
+        self.pan_by(0, 0)
         return self.view._view_zoom
 
     def keep_anchor(self, captured):
         point, norm = captured
         rect = self.view.image_rect()
         delta = QPointF(point)-QPointF(rect.x()+norm.x()*rect.width(), rect.y()+norm.y()*rect.height())
-        self.view._pan = QPointF(self.view._pan)+delta
-        self.view.update()
+        self.pan_by(delta.x(), delta.y())
 
-    def prepare_pan(self):
-        pass
-
-    def pan_by(self, dx, dy):
-        self.view._pan = QPointF(self.view._pan)+QPointF(dx,dy)
+    def pan_by(self, dx, dy) -> None:
+        rect = self.view.image_rect()
+        self.view._pan = QPointF(
+            clamp_canvas_offset(self.view._pan.x() + dx, rect.width(), self.view.width()),
+            clamp_canvas_offset(self.view._pan.y() + dy, rect.height(), self.view.height()),
+        )
         self.view.update()
 
 
@@ -235,7 +237,10 @@ class ScaledView(SceneCanvasOwnerMixin, QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, "_view_controller"):
-            self._view_controller.handle_resize()
+            if self._fit_mode:
+                self._view_controller.handle_resize()
+            else:
+                self._view_controller.apply_after_content_change()
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001
 

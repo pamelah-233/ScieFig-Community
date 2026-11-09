@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import sys
-from core.image_analysis.he_fiber_area import HE_FIBER_CELLPOSE_MODELS, HE_FIBER_METHOD_BOUNDARY
+from core.image_analysis.he_fiber_area import HE_FIBER_CELLPOSE_MODELS, HE_FIBER_METHOD_BOUNDARY, HE_FIBER_METHOD_CELLPOSE
 from ui.widgets.model_selection_hint import ModelSelectionHint
 
-from PyQt6.QtCore import QEvent, QMimeData, QPoint, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QMimeData, QPoint, QSignalBlocker, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QDrag, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
@@ -58,9 +58,11 @@ from core.utils.image_formats import COMPOSER_IMAGE_SUFFIXES, WB_IMAGE_SUFFIXES,
 from ui.widgets.reliability_banner import ReliabilityBanner
 from ui.widgets.measurement_excel_export import EXCEL_VALUE_ROLE, measurement_excel_button
 from ui.widgets.current_page_stack import CurrentPageStackedWidget
+from ui.widgets.workflow_presentation import WorkflowDisclosure
 from ui.widgets.calibration_controls import action_grid
 
 WB_STRIP_MIME = "application/x-sciefig-wb-strip-index"
+IHC_SENSITIVITY_LEVELS = ("low", "medium", "high")
 
 
 WB_COLOR_NAMES = {
@@ -665,35 +667,6 @@ class DataInputPanel(QFrame):
         self.summary = QLabel("")
         self.summary.setObjectName("DimLabel")
         self.summary.setWordWrap(True)
-        self.ihc_mode_combo = QComboBox()
-        self.ihc_mode_combo.addItem("Foolproof", "foolproof")
-        self.ihc_mode_combo.addItem("Assisted", "assisted")
-        self.ihc_mode_combo.addItem("Expert", "expert")
-        self.ihc_task_type_combo = QComboBox()
-        self.ihc_task_type_combo.addItem("DAB IHC / H-score", "ihc_dab")
-        self.ihc_task_type_combo.addItem("Hematoxylin-rich tissue (coming soon)", "hematoxylin_rich")
-        self.ihc_task_type_combo.addItem("Other brightfield stain (coming soon)", "other_brightfield")
-        self.ihc_quant_goal_combo = QComboBox()
-        self.ihc_quant_goal_combo.addItems(list(IHC_STAT_METRICS.keys()))
-        for index in range(self.ihc_quant_goal_combo.count()):
-            self.ihc_quant_goal_combo.setItemData(index, self.ihc_quant_goal_combo.itemText(index))
-        self.ihc_workflow_hint_label = QLabel(
-            "One-click DAB analysis with automatic tissue masking, QC messages, and a locked batch threshold."
-        )
-        self.ihc_workflow_hint_label.setObjectName("DimLabel")
-        self.ihc_workflow_hint_label.setWordWrap(True)
-        self.ihc_sensitivity_combo = QComboBox()
-        self.ihc_sensitivity_combo.addItem("Low", "low")
-        self.ihc_sensitivity_combo.addItem("Medium", "medium")
-        self.ihc_sensitivity_combo.addItem("High", "high")
-        self.ihc_cleanup_combo = QComboBox()
-        self.ihc_cleanup_combo.addItem("Off", "off")
-        self.ihc_cleanup_combo.addItem("Low", "low")
-        self.ihc_cleanup_combo.addItem("Medium", "medium")
-        self.ihc_cleanup_combo.addItem("High", "high")
-        self.ihc_cleanup_combo.setCurrentIndex(2)
-        self.ihc_tissue_correction_checkbox = QCheckBox("Exclude tissue background automatically")
-        self.ihc_tissue_correction_checkbox.setChecked(True)
         self.ihc_mark_positive_button = QRadioButton("Positive")
         self.ihc_mark_negative_button = QRadioButton("Negative")
         self.ihc_stop_sampling_button = QRadioButton("Off")
@@ -722,29 +695,6 @@ class DataInputPanel(QFrame):
         self.ihc_batch_threshold_label = QLabel("Batch threshold: waiting for Auto Analyze.")
         self.ihc_batch_threshold_label.setObjectName("DimLabel")
         self.ihc_batch_threshold_label.setWordWrap(True)
-        self.ihc_positive_threshold_spin = QDoubleSpinBox()
-        self.ihc_positive_threshold_spin.setRange(0.0, 1.0)
-        self.ihc_positive_threshold_spin.setDecimals(2)
-        self.ihc_positive_threshold_spin.setSingleStep(0.05)
-        self.ihc_positive_threshold_spin.setValue(0.30)
-        self.ihc_weak_threshold_spin = QDoubleSpinBox()
-        self.ihc_weak_threshold_spin.setRange(0.0, 1.0)
-        self.ihc_weak_threshold_spin.setDecimals(2)
-        self.ihc_weak_threshold_spin.setSingleStep(0.05)
-        self.ihc_weak_threshold_spin.setValue(0.20)
-        self.ihc_moderate_threshold_spin = QDoubleSpinBox()
-        self.ihc_moderate_threshold_spin.setRange(0.0, 1.0)
-        self.ihc_moderate_threshold_spin.setDecimals(2)
-        self.ihc_moderate_threshold_spin.setSingleStep(0.05)
-        self.ihc_moderate_threshold_spin.setValue(0.50)
-        self.ihc_strong_threshold_spin = QDoubleSpinBox()
-        self.ihc_strong_threshold_spin.setRange(0.0, 1.0)
-        self.ihc_strong_threshold_spin.setDecimals(2)
-        self.ihc_strong_threshold_spin.setSingleStep(0.05)
-        self.ihc_strong_threshold_spin.setValue(0.80)
-        self.ihc_min_area_spin = QSpinBox()
-        self.ihc_min_area_spin.setRange(0, 100000)
-        self.ihc_min_area_spin.setValue(100)
         self.ihc_run_analysis_button = QPushButton("Run IHC Analysis")
         self.ihc_run_analysis_button.setObjectName("PrimaryButton")
         self.ihc_copy_table_button = QPushButton("Copy Full Table")
@@ -845,14 +795,6 @@ class DataInputPanel(QFrame):
         ihc_step_nav_layout.setColumnStretch(0, 1)
         ihc_step_nav_layout.setColumnStretch(2, 1)
 
-        self.ihc_workflow_group = bind_i18n(QGroupBox(), "guided_workflow")
-        ihc_workflow_form = QFormLayout(self.ihc_workflow_group)
-        ihc_workflow_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        ihc_workflow_form.addRow(self._i18n_form_label("mode"), self.ihc_mode_combo)
-        ihc_workflow_form.addRow(self._i18n_form_label("task"), self.ihc_task_type_combo)
-        ihc_workflow_form.addRow(self._i18n_form_label("goal"), self.ihc_quant_goal_combo)
-        ihc_workflow_form.addRow(self.ihc_workflow_hint_label)
-
         self.ihc_import_group = bind_i18n(QGroupBox(), "import")
         ihc_import_layout = QVBoxLayout(self.ihc_import_group)
         ihc_import_layout.setContentsMargins(12, 12, 12, 12)
@@ -865,23 +807,39 @@ class DataInputPanel(QFrame):
         self.ihc_import_hint_label.setObjectName("DimLabel")
         ihc_import_layout.addWidget(self.ihc_import_hint_label)
 
-        self.ihc_measure_actions_group = bind_i18n(QGroupBox(), "foolproof_mode")
+        self.ihc_measure_actions_group = QGroupBox()
         ihc_measure_actions_layout = QVBoxLayout(self.ihc_measure_actions_group)
         ihc_measure_actions_layout.setContentsMargins(12, 12, 12, 12)
         ihc_measure_actions_layout.setSpacing(6)
-        ihc_measure_action_row = QWidget()
-        ihc_measure_action_row_layout = QHBoxLayout(ihc_measure_action_row)
-        ihc_measure_action_row_layout.setContentsMargins(0, 0, 0, 0)
-        ihc_measure_action_row_layout.setSpacing(6)
-        self.ihc_try_assisted_button = QPushButton("Try Assisted Mode")
-        ihc_measure_action_row_layout.addWidget(self.ihc_run_analysis_button)
-        ihc_measure_action_row_layout.addWidget(self.ihc_try_assisted_button)
-        ihc_measure_actions_layout.addWidget(ihc_measure_action_row)
+        sensitivity_label = bind_i18n(QLabel(), "detection_sensitivity")
+        sensitivity_label.setWordWrap(True)
+        self.ihc_detection_sensitivity_value_label = QLabel()
+        sensitivity_heading = QHBoxLayout()
+        sensitivity_heading.addWidget(sensitivity_label, 1)
+        sensitivity_heading.addWidget(self.ihc_detection_sensitivity_value_label)
+        self.ihc_detection_sensitivity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.ihc_detection_sensitivity_slider.setObjectName("IHCDetectionSensitivity")
+        self.ihc_detection_sensitivity_slider.setRange(0, len(IHC_SENSITIVITY_LEVELS) - 1)
+        self.ihc_detection_sensitivity_slider.setPageStep(1)
+        self.ihc_detection_sensitivity_slider.setTickInterval(1)
+        self.ihc_detection_sensitivity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.ihc_detection_sensitivity_slider.setEnabled(False)
+        sensitivity_label.setBuddy(self.ihc_detection_sensitivity_slider)
+        self.set_ihc_detection_sensitivity("medium")
+        self.ihc_detection_sensitivity_slider.valueChanged.connect(self._update_ihc_sensitivity_label)
+        ihc_measure_actions_layout.addLayout(sensitivity_heading)
+        ihc_measure_actions_layout.addWidget(self.ihc_detection_sensitivity_slider)
+        self.ihc_reset_batch_threshold_button = bind_i18n(QPushButton(), "ihc_reset_batch_threshold")
+        bind_i18n(self.ihc_reset_batch_threshold_button, "ihc_reset_batch_threshold_hint", "toolTip")
+        self.ihc_reset_batch_threshold_button.hide()
+        ihc_measure_actions_layout.addWidget(self.ihc_reset_batch_threshold_button)
+        ihc_measure_actions_layout.addWidget(self.ihc_run_analysis_button)
         ihc_measure_actions_layout.addWidget(self.ihc_reliability_banner)
         ihc_measure_actions_layout.addWidget(self.ihc_threshold_status_label)
+        ihc_measure_actions_layout.addWidget(self.ihc_batch_threshold_label)
 
-        self.ihc_guided_controls_group = bind_i18n(QGroupBox(), "assisted_mode")
-        ihc_guided_controls_form = QFormLayout(self.ihc_guided_controls_group)
+        ihc_calibration_content = QWidget()
+        ihc_guided_controls_form = QFormLayout(ihc_calibration_content)
         ihc_guided_controls_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         ihc_sampling_buttons = QWidget()
         ihc_sampling_buttons_layout = QHBoxLayout(ihc_sampling_buttons)
@@ -908,21 +866,10 @@ class DataInputPanel(QFrame):
         ihc_guided_controls_form.addRow(self._i18n_form_label("actions"), ihc_assisted_actions)
         ihc_guided_controls_form.addRow(self._i18n_form_label("example_list"), self.ihc_examples_list)
         ihc_guided_controls_form.addRow(self.ihc_delete_example_button)
-        ihc_guided_controls_form.addRow(self.ihc_batch_threshold_label)
-        ihc_guided_controls_form.addRow(self._i18n_form_label("sensitivity"), self.ihc_sensitivity_combo)
-        ihc_guided_controls_form.addRow(self._i18n_form_label("clean_specks"), self.ihc_cleanup_combo)
         ihc_guided_controls_form.addRow(self._i18n_form_label("overlay_opacity"), ihc_overlay_opacity_row)
-        ihc_guided_controls_form.addRow(self.ihc_tissue_correction_checkbox)
         ihc_guided_controls_form.addRow(self.ihc_example_status_label)
-
-        self.ihc_threshold_group = bind_i18n(QGroupBox(), "expert_mode")
-        ihc_threshold_form = QFormLayout(self.ihc_threshold_group)
-        ihc_threshold_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        ihc_threshold_form.addRow(self._i18n_form_label("positive_threshold"), self.ihc_positive_threshold_spin)
-        ihc_threshold_form.addRow(self._i18n_form_label("weak_threshold"), self.ihc_weak_threshold_spin)
-        ihc_threshold_form.addRow(self._i18n_form_label("moderate_threshold"), self.ihc_moderate_threshold_spin)
-        ihc_threshold_form.addRow(self._i18n_form_label("strong_threshold"), self.ihc_strong_threshold_spin)
-        ihc_threshold_form.addRow(self._i18n_form_label("min_area_px"), self.ihc_min_area_spin)
+        self.ihc_threshold_calibration = WorkflowDisclosure("ihc_threshold_calibration", ihc_calibration_content)
+        self.ihc_threshold_calibration.hide()
         self.ihc_roi_group = bind_i18n(QGroupBox(), "roi_selection")
         ihc_roi_layout = QVBoxLayout(self.ihc_roi_group)
         ihc_roi_layout.setContentsMargins(12, 12, 12, 12)
@@ -978,121 +925,36 @@ class DataInputPanel(QFrame):
         self.ihc_context_stack.addWidget(
             self._wrap_context_page(
                 self.ihc_measure_actions_group,
-                self.ihc_guided_controls_group,
-                self.ihc_threshold_group,
                 self.ihc_roi_group,
+                self.ihc_threshold_calibration,
                 self.ihc_results_group,
             )
         )
         self.ihc_context_stack.addWidget(self._wrap_context_page(self.ihc_stats_group))
         self.ihc_context_stack.addWidget(self._wrap_context_page(self.ihc_layout_group))
         ihc_context_layout.addWidget(self.ihc_step_nav, 0)
-        ihc_context_layout.addWidget(self.ihc_workflow_group, 0)
         ihc_context_layout.addWidget(self.ihc_active_image_combo, 0)
         ihc_context_layout.addWidget(self.ihc_context_stack, 1)
-        self.ihc_mode_combo.currentIndexChanged.connect(self._sync_ihc_guided_mode)
-        self.ihc_task_type_combo.currentIndexChanged.connect(self._sync_ihc_guided_mode)
-        self.ihc_quant_goal_combo.currentIndexChanged.connect(self._sync_ihc_guided_mode)
-        self._sync_ihc_guided_mode()
         self.set_ihc_step(0, emit_signal=False)
 
-        self.brightfield_mode_combo = QComboBox()
-        self.brightfield_mode_combo.addItem("Foolproof", "foolproof")
-        self.brightfield_mode_combo.addItem("Assisted", "assisted")
-        self.brightfield_mode_combo.addItem("Expert", "expert")
-        self.brightfield_workflow_hint_label = QLabel(
-            "H&E images use the guided bridge by default; switch to Expert for raw HSV/LAB/grayscale measurement."
-        )
+        self.brightfield_workflow_hint_label = QLabel()
         self.brightfield_workflow_hint_label.setObjectName("DimLabel")
         self.brightfield_workflow_hint_label.setWordWrap(True)
-        self.brightfield_sensitivity_combo = QComboBox()
-        self.brightfield_sensitivity_combo.addItem("Low", "low")
-        self.brightfield_sensitivity_combo.addItem("Medium", "medium")
-        self.brightfield_sensitivity_combo.addItem("High", "high")
-        self.brightfield_foolproof_sensitivity_combo = QComboBox()
-        self.brightfield_foolproof_sensitivity_combo.addItem("-2 Conservative", -2)
-        self.brightfield_foolproof_sensitivity_combo.addItem("-1 Slightly conservative", -1)
-        self.brightfield_foolproof_sensitivity_combo.addItem("0 Default", 0)
-        self.brightfield_foolproof_sensitivity_combo.addItem("+1 Slightly sensitive", 1)
-        self.brightfield_foolproof_sensitivity_combo.addItem("+2 Sensitive", 2)
-        self.brightfield_assisted_sensitivity_combo = QComboBox()
-        self.brightfield_assisted_sensitivity_combo.addItem("-2 Conservative", -2)
-        self.brightfield_assisted_sensitivity_combo.addItem("-1 Slightly conservative", -1)
-        self.brightfield_assisted_sensitivity_combo.addItem("0 Default", 0)
-        self.brightfield_assisted_sensitivity_combo.addItem("+1 Slightly sensitive", 1)
-        self.brightfield_assisted_sensitivity_combo.addItem("+2 Sensitive", 2)
-        self.brightfield_assisted_small_region_filter_combo = QComboBox()
-        self.brightfield_assisted_small_region_filter_combo.addItem("-2 Keep more small regions", -2)
-        self.brightfield_assisted_small_region_filter_combo.addItem("-1 Keep slightly more small regions", -1)
-        self.brightfield_assisted_small_region_filter_combo.addItem("0 Default", 0)
-        self.brightfield_assisted_small_region_filter_combo.addItem("+1 Filter small regions more", 1)
-        self.brightfield_assisted_small_region_filter_combo.addItem("+2 Filter small regions strongly", 2)
-        self.brightfield_assisted_small_region_filter_combo.setToolTip(
-            "Adjusts the minimum retained segmented-region size after thresholding. "
-            "This does not change the detection threshold."
-        )
-        self.brightfield_cleanup_combo = QComboBox()
-        self.brightfield_cleanup_combo.addItem("Off", "off")
-        self.brightfield_cleanup_combo.addItem("Low", "low")
-        self.brightfield_cleanup_combo.addItem("Medium", "medium")
-        self.brightfield_cleanup_combo.addItem("High", "high")
-        self.brightfield_segmentation_mode_combo = QComboBox()
-        self.brightfield_segmentation_mode_combo.addItem("HSV Color Range", "hsv")
-        self.brightfield_segmentation_mode_combo.addItem("LAB Color Range", "lab")
-        self.brightfield_segmentation_mode_combo.addItem("Grayscale Threshold", "grayscale")
-        self.brightfield_h_min_spin = QDoubleSpinBox()
-        self.brightfield_h_max_spin = QDoubleSpinBox()
-        self.brightfield_s_min_spin = QDoubleSpinBox()
-        self.brightfield_s_max_spin = QDoubleSpinBox()
-        self.brightfield_v_min_spin = QDoubleSpinBox()
-        self.brightfield_v_max_spin = QDoubleSpinBox()
-        for spin, value in [
-            (self.brightfield_h_min_spin, 0.00),
-            (self.brightfield_h_max_spin, 0.20),
-            (self.brightfield_s_min_spin, 0.15),
-            (self.brightfield_s_max_spin, 1.00),
-            (self.brightfield_v_min_spin, 0.00),
-            (self.brightfield_v_max_spin, 0.95),
-        ]:
-            spin.setRange(0.0, 1.0)
-            spin.setDecimals(2)
-            spin.setSingleStep(0.05)
-            spin.setValue(value)
-        self.brightfield_l_min_spin = QDoubleSpinBox()
-        self.brightfield_l_max_spin = QDoubleSpinBox()
-        self.brightfield_a_min_spin = QDoubleSpinBox()
-        self.brightfield_a_max_spin = QDoubleSpinBox()
-        self.brightfield_b_min_spin = QDoubleSpinBox()
-        self.brightfield_b_max_spin = QDoubleSpinBox()
-        for spin, minimum, maximum, value in [
-            (self.brightfield_l_min_spin, 0.0, 100.0, 0.0),
-            (self.brightfield_l_max_spin, 0.0, 100.0, 95.0),
-            (self.brightfield_a_min_spin, -128.0, 127.0, -10.0),
-            (self.brightfield_a_max_spin, -128.0, 127.0, 60.0),
-            (self.brightfield_b_min_spin, -128.0, 127.0, 0.0),
-            (self.brightfield_b_max_spin, -128.0, 127.0, 90.0),
-        ]:
-            spin.setRange(minimum, maximum)
-            spin.setDecimals(1)
-            spin.setSingleStep(1.0)
-            spin.setValue(value)
-        self.brightfield_gray_threshold_spin = QDoubleSpinBox()
-        self.brightfield_gray_threshold_spin.setRange(0.0, 1.0)
-        self.brightfield_gray_threshold_spin.setDecimals(2)
-        self.brightfield_gray_threshold_spin.setSingleStep(0.05)
-        self.brightfield_gray_threshold_spin.setValue(0.55)
-        self.brightfield_gray_invert_checkbox = QCheckBox("Invert grayscale threshold")
-        self.brightfield_fill_holes_checkbox = QCheckBox("Fill holes")
-        self.brightfield_fill_holes_checkbox.setChecked(True)
-        self.brightfield_cleanup_min_area_spin = QSpinBox()
-        self.brightfield_cleanup_min_area_spin.setRange(0, 100000)
-        self.brightfield_cleanup_min_area_spin.setValue(0)
-        self.brightfield_min_object_area_spin = QSpinBox()
-        self.brightfield_min_object_area_spin.setRange(0, 100000)
-        self.brightfield_min_object_area_spin.setValue(10)
-        self.brightfield_max_object_area_spin = QSpinBox()
-        self.brightfield_max_object_area_spin.setRange(0, 1000000)
-        self.brightfield_max_object_area_spin.setValue(0)
+        self.brightfield_detection_sensitivity_combo = QComboBox()
+        self.brightfield_detection_sensitivity_combo.addItem("-2 Conservative", -2)
+        self.brightfield_detection_sensitivity_combo.addItem("-1 Slightly conservative", -1)
+        self.brightfield_detection_sensitivity_combo.addItem("0 Default", 0)
+        self.brightfield_detection_sensitivity_combo.addItem("+1 Slightly sensitive", 1)
+        self.brightfield_detection_sensitivity_combo.addItem("+2 Sensitive", 2)
+        self.brightfield_detection_sensitivity_combo.setCurrentIndex(2)
+        self.brightfield_small_region_filter_combo = QComboBox()
+        self.brightfield_small_region_filter_combo.addItem("-2 Keep more small regions", -2)
+        self.brightfield_small_region_filter_combo.addItem("-1 Keep slightly more small regions", -1)
+        self.brightfield_small_region_filter_combo.addItem("0 Default", 0)
+        self.brightfield_small_region_filter_combo.addItem("+1 Filter small regions more", 1)
+        self.brightfield_small_region_filter_combo.addItem("+2 Filter small regions strongly", 2)
+        self.brightfield_small_region_filter_combo.setCurrentIndex(2)
+        bind_i18n(self.brightfield_small_region_filter_combo, "bf_region_filter_hint", "toolTip")
         self.brightfield_preview_mask_button = QPushButton("Preview Mask Overlay")
         self.brightfield_preview_mask_button.setObjectName("PrimaryButton")
         self.brightfield_preview_status_label = QLabel("Mask preview uses the current segmentation mode and active ROI.")
@@ -1127,10 +989,10 @@ class DataInputPanel(QFrame):
         self.brightfield_he_fiber_reset_scale_button = QPushButton("Reset")
         bind_i18n(self.brightfield_he_fiber_reset_scale_button, "reset_he_scale_tooltip", "toolTip")
         self.brightfield_he_fiber_method_combo = QComboBox()
-        self.brightfield_he_fiber_method_combo.addItem(tr("he_fiber_method_original"), "original")
-        self.brightfield_he_fiber_method_combo.addItem(tr("he_fiber_method_anti_oversegmentation"), "anti_oversegmentation")
-        self.brightfield_he_fiber_method_combo.addItem(tr('he_fiber_method_cellpose_cyto3'), 'cellpose_cyto3')
+        self.brightfield_he_fiber_method_combo.addItem(tr('he_fiber_method_cellpose_cyto3'), HE_FIBER_METHOD_CELLPOSE)
         self.brightfield_he_fiber_method_combo.addItem(tr('he_fiber_method_'+HE_FIBER_METHOD_BOUNDARY), HE_FIBER_METHOD_BOUNDARY)
+        self.brightfield_he_fiber_method_combo.addItem(tr("he_fiber_method_anti_oversegmentation"), "anti_oversegmentation")
+        self.brightfield_he_fiber_method_combo.addItem(tr("he_fiber_method_original"), "original")
         self.brightfield_he_fiber_method_combo.setMinimumWidth(0)
         self.brightfield_he_fiber_method_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.brightfield_he_fiber_method_combo.setMinimumContentsLength(12)
@@ -1188,7 +1050,7 @@ class DataInputPanel(QFrame):
         self.brightfield_bright_round_cell_max_diameter_um_spin.setValue(30.0)
         self.brightfield_cellpose_strategy_combo = QComboBox()
         self._brightfield_cellpose_strategy='general'
-        for strategy in ('traditional','general','local_contrast'):
+        for strategy in ('general','local_contrast','traditional'):
             self.brightfield_cellpose_strategy_combo.addItem(tr('cellpose_cell_strategy_'+strategy),strategy)
         self.brightfield_cellpose_strategy_combo.setMinimumWidth(0)
         self.brightfield_cellpose_strategy_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -1201,7 +1063,6 @@ class DataInputPanel(QFrame):
         cell_reference_layout = QHBoxLayout(self.brightfield_cellpose_reference_row)
         cell_reference_layout.setContentsMargins(0,0,0,0)
         cell_reference_layout.addWidget(self.brightfield_cellpose_reference_combo,1)
-        self.brightfield_cellpose_reference_row.setEnabled(False)
         self.brightfield_cellpose_diameter_spin = QDoubleSpinBox()
         self.brightfield_cellpose_diameter_spin.setRange(2,2000)
         self.brightfield_cellpose_diameter_spin.setValue(30)
@@ -1213,9 +1074,8 @@ class DataInputPanel(QFrame):
         self.brightfield_cellpose_min_size_spin = QSpinBox()
         self.brightfield_cellpose_min_size_spin.setRange(1,100000)
         self.brightfield_cellpose_min_size_spin.setValue(60)
-        self.brightfield_cellpose_diameter_spin.setEnabled(False)
-        self.brightfield_cellpose_min_size_spin.setEnabled(False)
         self.brightfield_cellpose_strategy_combo.currentIndexChanged.connect(self._sync_cellpose_controls)
+        self._sync_cellpose_controls()
         self.brightfield_bright_round_cell_measure_button = QPushButton("Measure Bright Round Cells")
         self.brightfield_bright_round_cell_measure_button.setObjectName("PrimaryButton")
         bind_i18n(self.brightfield_bright_round_cell_measure_button, "measure_bright_round_cells")
@@ -1434,10 +1294,9 @@ class DataInputPanel(QFrame):
         brightfield_step_nav_layout.setColumnStretch(0, 1)
         brightfield_step_nav_layout.setColumnStretch(2, 1)
 
-        self.brightfield_workflow_group = bind_i18n(QGroupBox(), "guided_workflow")
+        self.brightfield_workflow_group = QGroupBox()
         brightfield_workflow_form = QFormLayout(self.brightfield_workflow_group)
         brightfield_workflow_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        brightfield_workflow_form.addRow(self._i18n_form_label("mode"), self.brightfield_mode_combo)
         brightfield_workflow_form.addRow(self.brightfield_workflow_hint_label)
 
         self.brightfield_import_group = bind_i18n(QGroupBox(), "import")
@@ -1464,54 +1323,10 @@ class DataInputPanel(QFrame):
         brightfield_segment_layout = QVBoxLayout(self.brightfield_segment_group)
         brightfield_segment_layout.setContentsMargins(12, 12, 12, 12)
         brightfield_segment_layout.setSpacing(6)
-        brightfield_segment_form = QFormLayout()
-        brightfield_segment_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        brightfield_segment_form.addRow(self._i18n_form_label("mode"), self.brightfield_segmentation_mode_combo)
-        brightfield_segment_layout.addLayout(brightfield_segment_form)
-        self.brightfield_segment_params_stack = CurrentPageStackedWidget(compact=True)
-
-        brightfield_hsv_page = QWidget()
-        brightfield_hsv_form = QFormLayout(brightfield_hsv_page)
-        brightfield_hsv_form.addRow(self._i18n_form_label("hue_min"), self.brightfield_h_min_spin)
-        brightfield_hsv_form.addRow(self._i18n_form_label("hue_max"), self.brightfield_h_max_spin)
-        brightfield_hsv_form.addRow(self._i18n_form_label("sat_min"), self.brightfield_s_min_spin)
-        brightfield_hsv_form.addRow(self._i18n_form_label("sat_max"), self.brightfield_s_max_spin)
-        brightfield_hsv_form.addRow(self._i18n_form_label("val_min"), self.brightfield_v_min_spin)
-        brightfield_hsv_form.addRow(self._i18n_form_label("val_max"), self.brightfield_v_max_spin)
-        self.brightfield_segment_params_stack.addWidget(brightfield_hsv_page)
-
-        brightfield_lab_page = QWidget()
-        brightfield_lab_form = QFormLayout(brightfield_lab_page)
-        self.brightfield_lab_status_label = QLabel("LAB segmentation available via skimage.color.rgb2lab.")
-        self.brightfield_lab_status_label.setObjectName("DimLabel")
-        self.brightfield_lab_status_label.setWordWrap(True)
-        brightfield_lab_form.addRow(self.brightfield_lab_status_label)
-        brightfield_lab_form.addRow(self._i18n_form_label("l_min"), self.brightfield_l_min_spin)
-        brightfield_lab_form.addRow(self._i18n_form_label("l_max"), self.brightfield_l_max_spin)
-        brightfield_lab_form.addRow(self._i18n_form_label("a_min"), self.brightfield_a_min_spin)
-        brightfield_lab_form.addRow(self._i18n_form_label("a_max"), self.brightfield_a_max_spin)
-        brightfield_lab_form.addRow(self._i18n_form_label("b_min"), self.brightfield_b_min_spin)
-        brightfield_lab_form.addRow(self._i18n_form_label("b_max"), self.brightfield_b_max_spin)
-        self.brightfield_segment_params_stack.addWidget(brightfield_lab_page)
-
-        brightfield_gray_page = QWidget()
-        brightfield_gray_form = QFormLayout(brightfield_gray_page)
-        brightfield_gray_form.addRow(self._i18n_form_label("threshold"), self.brightfield_gray_threshold_spin)
-        brightfield_gray_form.addRow(self.brightfield_gray_invert_checkbox)
-        self.brightfield_segment_params_stack.addWidget(brightfield_gray_page)
-        brightfield_segment_layout.addWidget(self.brightfield_segment_params_stack)
-
-        brightfield_cleanup_group = bind_i18n(QGroupBox(), "mask_cleanup_objects")
-        brightfield_cleanup_form = QFormLayout(brightfield_cleanup_group)
-        brightfield_cleanup_form.addRow(self.brightfield_fill_holes_checkbox)
-        brightfield_cleanup_form.addRow(self._i18n_form_label("cleanup_min_area_px"), self.brightfield_cleanup_min_area_spin)
-        brightfield_cleanup_form.addRow(self._i18n_form_label("min_object_area_px"), self.brightfield_min_object_area_spin)
-        brightfield_cleanup_form.addRow(self._i18n_form_label("max_object_area_off"), self.brightfield_max_object_area_spin)
-        brightfield_segment_layout.addWidget(brightfield_cleanup_group)
         brightfield_segment_layout.addWidget(self.brightfield_preview_mask_button)
         brightfield_segment_layout.addWidget(self.brightfield_preview_status_label)
 
-        self.brightfield_measure_group = bind_i18n(QGroupBox(), "foolproof_mode")
+        self.brightfield_measure_group = QGroupBox()
         brightfield_measure_layout = QVBoxLayout(self.brightfield_measure_group)
         brightfield_measure_layout.setContentsMargins(12, 12, 12, 12)
         brightfield_measure_layout.setSpacing(6)
@@ -1528,19 +1343,12 @@ class DataInputPanel(QFrame):
         brightfield_roi_layout.addLayout(brightfield_roi_actions)
         brightfield_roi_layout.addWidget(self.brightfield_roi_status_label)
         brightfield_measure_layout.addWidget(brightfield_roi_group)
-        self.brightfield_foolproof_controls_group = bind_i18n(QGroupBox(), "foolproof_detection_sensitivity")
-        brightfield_foolproof_controls_form = QFormLayout(self.brightfield_foolproof_controls_group)
-        brightfield_foolproof_controls_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        brightfield_foolproof_controls_form.addRow(self._i18n_form_label("detection_sensitivity"), self.brightfield_foolproof_sensitivity_combo)
-        brightfield_measure_layout.addWidget(self.brightfield_foolproof_controls_group)
-        self.brightfield_guided_controls_group = bind_i18n(QGroupBox(), "assisted_mode")
-        brightfield_guided_controls_form = QFormLayout(self.brightfield_guided_controls_group)
-        brightfield_guided_controls_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        brightfield_guided_controls_form.addRow(self._i18n_form_label("detection_sensitivity"), self.brightfield_assisted_sensitivity_combo)
-        brightfield_guided_controls_form.addRow(self._i18n_form_label("small_region_filtering"), self.brightfield_assisted_small_region_filter_combo)
-        brightfield_guided_controls_form.addRow(self._i18n_form_label("sensitivity"), self.brightfield_sensitivity_combo)
-        brightfield_guided_controls_form.addRow(self._i18n_form_label("clean_specks"), self.brightfield_cleanup_combo)
-        brightfield_measure_layout.addWidget(self.brightfield_guided_controls_group)
+        self.brightfield_area_controls = QGroupBox()
+        brightfield_area_form = QFormLayout(self.brightfield_area_controls)
+        brightfield_area_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        brightfield_area_form.addRow(self._i18n_form_label("detection_sensitivity"), self.brightfield_detection_sensitivity_combo)
+        brightfield_area_form.addRow(self._i18n_form_label("small_region_filtering"), self.brightfield_small_region_filter_combo)
+        brightfield_measure_layout.addWidget(self.brightfield_area_controls)
         brightfield_batch_actions = QWidget()
         brightfield_batch_actions_layout = QHBoxLayout(brightfield_batch_actions)
         brightfield_batch_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -1657,7 +1465,7 @@ class DataInputPanel(QFrame):
         self.brightfield_measure_mode_stack = CurrentPageStackedWidget(compact=True)
         self.brightfield_measure_mode_stack.addWidget(self.brightfield_bright_round_cell_group)
         for widgets in (
-            (self.brightfield_foolproof_controls_group, self.brightfield_guided_controls_group,
+            (self.brightfield_area_controls,
              self.brightfield_batch_threshold_status_label, brightfield_batch_actions,
              self.brightfield_run_analysis_button, self.brightfield_reliability_banner,
               self.brightfield_measure_status_label, self.brightfield_copy_table_button,
@@ -1732,12 +1540,9 @@ class DataInputPanel(QFrame):
         brightfield_context_layout.addWidget(self.brightfield_active_image_combo, 0)
         brightfield_context_layout.addWidget(self.brightfield_context_stack, 1)
         self.brightfield_stats_plot_source_combo.currentIndexChanged.connect(self._sync_brightfield_stats_plot_source_ui)
-        self.brightfield_mode_combo.currentIndexChanged.connect(self._sync_brightfield_guided_mode)
-        self.brightfield_stain_type_combo.currentTextChanged.connect(self._sync_brightfield_guided_mode)
-        self.brightfield_segmentation_mode_combo.currentIndexChanged.connect(self._sync_brightfield_segmentation_mode)
-        self._sync_brightfield_segmentation_mode()
+        self.brightfield_stain_type_combo.currentTextChanged.connect(self._sync_brightfield_analysis_controls)
         self._sync_brightfield_stats_plot_source_ui()
-        self._sync_brightfield_guided_mode()
+        self._sync_brightfield_analysis_controls()
         self.set_brightfield_step(0, emit_signal=False)
         self.qpcr_context_panel = self._build_qpcr_context_panel()
 
@@ -2181,19 +1986,17 @@ class DataInputPanel(QFrame):
             ("wb_strip_delete_button", "remove_selected", "text"),
             ("wb_import_strip_button", "import", "text"),
             ("wb_image_properties_label", "no_strip_selected", "text"),
-            ("ihc_tissue_correction_checkbox", "exclude_tissue_background", "text"),
             ("ihc_mark_positive_button", "positive", "text"),
             ("ihc_mark_negative_button", "negative", "text"),
             ("ihc_stop_sampling_button", "off", "text"),
             ("ihc_recalibrate_button", "recalibrate", "text"),
             ("ihc_revert_auto_button", "revert_to_auto", "text"),
             ("ihc_delete_example_button", "delete_selected_example", "text"),
-            ("ihc_run_analysis_button", "run_ihc_analysis", "text"),
+            ("ihc_run_analysis_button", "auto_analyze", "text"),
             ("ihc_copy_table_button", "copy_full_table", "text"),
             ("ihc_add_outputs_button", "add_ihc_outputs", "text"),
             ("ihc_roi_draw_button", "draw_rectangle_roi", "text"),
             ("ihc_roi_clear_button", "clear_roi", "text"),
-            ("ihc_try_assisted_button", "try_assisted_mode", "text"),
             ("ihc_export_overlay_button", "export_overlay_image", "text"),
             ("ihc_export_results_csv_button", "export_results_csv", "text"),
             ("ihc_export_summary_json_button", "export_summary_json", "text"),
@@ -2359,87 +2162,25 @@ class DataInputPanel(QFrame):
         if measurement_uuid:
             self.brightfield_ai_measurement_selected.emit(measurement_uuid)
 
-    def _sync_brightfield_segmentation_mode(self) -> None:
-        if not hasattr(self, "brightfield_segmentation_mode_combo"):
-            return
-        mode = str(self.brightfield_segmentation_mode_combo.currentData() or "hsv")
-        self.brightfield_segment_params_stack.setCurrentIndex({"hsv": 0, "lab": 1, "grayscale": 2}.get(mode, 0))
-
-    def current_ihc_guided_mode(self) -> str:
-        return str(self.ihc_mode_combo.currentData() or "foolproof")
-
-    def set_ihc_guided_mode(self, mode: str) -> None:
-        index = self.ihc_mode_combo.findData(str(mode).strip().lower())
-        if index >= 0:
-            self.ihc_mode_combo.setCurrentIndex(index)
-
-    def current_ihc_task_type(self) -> str:
-        return str(self.ihc_task_type_combo.currentData() or "ihc_dab")
-
-    def set_ihc_task_type(self, task_type: str) -> None:
-        index = self.ihc_task_type_combo.findData(str(task_type).strip().lower())
-        if index >= 0:
-            self.ihc_task_type_combo.setCurrentIndex(index)
-
-    def current_ihc_quantification_goal(self) -> str:
-        return self.ihc_quant_goal_combo.currentData() or self.ihc_quant_goal_combo.currentText() or "Positive Area %"
-
-    def set_ihc_quantification_goal(self, goal: str) -> None:
-        index = self.ihc_quant_goal_combo.findData(str(goal))
-        if index >= 0:
-            self.ihc_quant_goal_combo.setCurrentIndex(index)
-        else:
-            self._set_combo_text(self.ihc_quant_goal_combo, str(goal))
-
     def current_ihc_stats_metric(self) -> str:
         return str(self.ihc_stats_metric_combo.currentData() or self.ihc_stats_metric_combo.currentText())
 
     def current_brightfield_stats_metric(self) -> str:
         return str(self.brightfield_stats_metric_combo.currentData() or self.brightfield_stats_metric_combo.currentText())
 
-    def _sync_ihc_guided_mode(self) -> None:
-        mode = self.current_ihc_guided_mode()
-        task_type = self.current_ihc_task_type()
-        goal = self.current_ihc_quantification_goal()
-        self.ihc_guided_controls_group.setVisible(mode == "assisted")
-        self.ihc_threshold_group.setVisible(mode == "expert")
-        self.ihc_measure_actions_group.setTitle(
-            tr({"foolproof": "foolproof_mode", "assisted": "assisted_mode", "expert": "expert_mode"}.get(mode, "foolproof_mode"))
-        )
-        self.ihc_run_analysis_button.setText(tr("run_expert_analysis" if mode == "expert" else "auto_analyze"))
-        self.ihc_try_assisted_button.setVisible(mode == "foolproof")
-        if task_type != "ihc_dab":
-            message = tr("ihc_task_placeholder_hint")
-        elif mode == "expert":
-            message = tr("ihc_expert_hint")
-        elif mode == "assisted":
-            message = tr("ihc_assisted_hint")
-        else:
-            message = tr("ihc_foolproof_hint")
-        self.ihc_workflow_hint_label.setText(f"{message}\n{tr('goal_value').format(goal=goal)}")
+    def ihc_detection_sensitivity(self) -> str:
+        return IHC_SENSITIVITY_LEVELS[self.ihc_detection_sensitivity_slider.value()]
 
-    def ihc_foolproof_analysis_settings(self) -> dict[str, str | bool]:
-        return {
-            "sensitivity": "medium",
-            "cleanup_level": "medium",
-            "tissue_background_correction": True,
-        }
+    def set_ihc_detection_sensitivity(self, sensitivity: str) -> None:
+        level = sensitivity if sensitivity in IHC_SENSITIVITY_LEVELS else "medium"
+        with QSignalBlocker(self.ihc_detection_sensitivity_slider):
+            self.ihc_detection_sensitivity_slider.setValue(IHC_SENSITIVITY_LEVELS.index(level))
+        self._update_ihc_sensitivity_label()
 
-    def ihc_guided_analysis_settings(self) -> dict[str, str | bool]:
-        return {
-            "sensitivity": str(self.ihc_sensitivity_combo.currentData() or "medium"),
-            "cleanup_level": str(self.ihc_cleanup_combo.currentData() or "medium"),
-            "tissue_background_correction": bool(self.ihc_tissue_correction_checkbox.isChecked()),
-        }
-
-    def set_ihc_guided_analysis_settings(self, settings: dict) -> None:
-        payload = dict(settings or {})
-        if "sensitivity" in payload:
-            self._set_combo_data(self.ihc_sensitivity_combo, payload["sensitivity"])
-        if "cleanup_level" in payload:
-            self._set_combo_data(self.ihc_cleanup_combo, payload["cleanup_level"])
-        if "tissue_background_correction" in payload:
-            self.ihc_tissue_correction_checkbox.setChecked(bool(payload["tissue_background_correction"]))
+    def _update_ihc_sensitivity_label(self) -> None:
+        slider = self.ihc_detection_sensitivity_slider
+        slider.setAccessibleName(tr("detection_sensitivity"))
+        self.ihc_detection_sensitivity_value_label.setText(tr(self.ihc_detection_sensitivity()))
 
     def ihc_overlay_opacity(self) -> float:
         return float(self.ihc_overlay_opacity_slider.value()) / 100.0
@@ -2477,7 +2218,7 @@ class DataInputPanel(QFrame):
         else:
             self.ihc_example_status_label.setText(tr("sampling_off_hint"))
 
-    def set_ihc_assisted_action_state(self, *, can_sample: bool, can_recalibrate: bool, can_revert: bool) -> None:
+    def set_ihc_calibration_action_state(self, *, can_sample: bool, can_recalibrate: bool, can_revert: bool) -> None:
         sample_enabled = bool(can_sample)
         self.ihc_mark_positive_button.setEnabled(sample_enabled)
         self.ihc_mark_negative_button.setEnabled(sample_enabled)
@@ -2506,110 +2247,29 @@ class DataInputPanel(QFrame):
     def selected_ihc_example_index(self) -> int:
         return self.ihc_examples_list.currentRow()
 
-    def current_brightfield_guided_mode(self) -> str:
-        return str(self.brightfield_mode_combo.currentData() or "foolproof")
-
-    def current_brightfield_foolproof_threshold_bias(self) -> int:
-        try:
-            return int(self.brightfield_foolproof_sensitivity_combo.currentData() or 0)
-        except (TypeError, ValueError):
-            return 0
-
-    def set_brightfield_foolproof_threshold_bias(self, bias: int) -> None:
-        index = self.brightfield_foolproof_sensitivity_combo.findData(int(bias))
-        if index >= 0:
-            self.brightfield_foolproof_sensitivity_combo.setCurrentIndex(index)
-
-    def current_brightfield_assisted_threshold_bias(self) -> int:
-        try:
-            return int(self.brightfield_assisted_sensitivity_combo.currentData() or 0)
-        except (TypeError, ValueError):
-            return 0
-
-    def set_brightfield_assisted_threshold_bias(self, bias: int) -> None:
-        index = self.brightfield_assisted_sensitivity_combo.findData(int(bias))
-        if index >= 0:
-            self.brightfield_assisted_sensitivity_combo.setCurrentIndex(index)
-
-    def current_brightfield_assisted_small_region_filter_bias(self) -> int:
-        try:
-            return int(self.brightfield_assisted_small_region_filter_combo.currentData() or 0)
-        except (TypeError, ValueError):
-            return 0
-
-    def set_brightfield_assisted_small_region_filter_bias(self, bias: int) -> None:
-        index = self.brightfield_assisted_small_region_filter_combo.findData(int(bias))
-        if index >= 0:
-            self.brightfield_assisted_small_region_filter_combo.setCurrentIndex(index)
-
-    def set_brightfield_guided_mode(self, mode: str) -> None:
-        index = self.brightfield_mode_combo.findData(str(mode).strip().lower())
-        if index >= 0:
-            self.brightfield_mode_combo.setCurrentIndex(index)
-
-    def set_brightfield_foolproof_sensitivity_enabled(self, enabled: bool) -> None:
-        self.brightfield_foolproof_sensitivity_combo.setEnabled(bool(enabled))
-
-    def set_brightfield_assisted_sensitivity_enabled(self, enabled: bool) -> None:
-        self.brightfield_assisted_sensitivity_combo.setEnabled(bool(enabled))
-
-    def set_brightfield_assisted_small_region_filter_enabled(self, enabled: bool) -> None:
-        self.brightfield_assisted_small_region_filter_combo.setEnabled(bool(enabled))
-
-    def _sync_brightfield_guided_mode(self) -> None:
-        mode = self.current_brightfield_guided_mode()
-        stain_type = str(self.brightfield_stain_type_combo.currentText() or "H&E")
-        normalized_stain_type = normalize_brightfield_stain_type(stain_type)
-        self.brightfield_foolproof_controls_group.setVisible(mode == "foolproof" and normalized_stain_type == "H&E")
-        self.brightfield_guided_controls_group.setVisible(mode == "assisted" and normalized_stain_type == "H&E")
+    def _sync_brightfield_analysis_controls(self) -> None:
+        stain = normalize_brightfield_stain_type(self.brightfield_stain_type_combo.currentText())
+        is_he = stain == "H&E"
+        self.brightfield_area_controls.setVisible(is_he)
         self.brightfield_measure_group.setTitle(
-            '' if self.brightfield_measure_group.property('measurementTaskBody') else tr("measure")
+            "" if self.brightfield_measure_group.property("measurementTaskBody") else tr("measure")
         )
-        if mode == "expert":
-            self.brightfield_run_analysis_button.setText(tr("run_expert_measurement"))
-            message = tr("bf_expert_hint")
-        elif normalized_stain_type == "H&E":
-            self.brightfield_run_analysis_button.setText(tr("auto_analyze_he"))
-            if mode == "foolproof":
-                message = tr("bf_foolproof_hint")
-            else:
-                message = tr("bf_assisted_hint")
-        elif mode == "foolproof":
-            self.brightfield_run_analysis_button.setText(tr("run_foolproof_preset"))
-            message = tr("bf_stain_foolproof_hint")
-        else:
-            self.brightfield_run_analysis_button.setText(tr("run_measurement"))
-            message = tr("bf_stain_assisted_hint")
-        self.brightfield_workflow_hint_label.setText(message)
+        self.brightfield_run_analysis_button.setText(tr("auto_analyze_he" if is_he else "run_stain_preset"))
+        self.brightfield_workflow_hint_label.setText(tr("bf_auto_hint" if is_he else "bf_stain_preset_hint"))
 
-    def brightfield_guided_analysis_settings(self) -> dict[str, str | int]:
+    def brightfield_area_analysis_settings(self) -> dict[str, int]:
         return {
-            "sensitivity": str(self.brightfield_sensitivity_combo.currentData() or "medium"),
-            "cleanup_level": str(self.brightfield_cleanup_combo.currentData() or "low"),
-            "threshold_bias": self.current_brightfield_assisted_threshold_bias(),
-            "small_region_filter_bias": self.current_brightfield_assisted_small_region_filter_bias(),
+            "threshold_bias": int(self.brightfield_detection_sensitivity_combo.currentData() or 0),
+            "small_region_filter_bias": int(self.brightfield_small_region_filter_combo.currentData() or 0),
         }
 
-    def brightfield_foolproof_analysis_settings(self) -> dict[str, int]:
-        return {
-            "threshold_bias": self.current_brightfield_foolproof_threshold_bias(),
-        }
-
-    def set_brightfield_guided_analysis_settings(self, settings: dict) -> None:
-        payload = dict(settings or {})
-        if "sensitivity" in payload:
-            self._set_combo_data(self.brightfield_sensitivity_combo, payload["sensitivity"])
-        if "cleanup_level" in payload:
-            self._set_combo_data(self.brightfield_cleanup_combo, payload["cleanup_level"])
-        if "threshold_bias" in payload:
-            self.set_brightfield_assisted_threshold_bias(int(payload["threshold_bias"]))
-        if "small_region_filter_bias" in payload:
-            self.set_brightfield_assisted_small_region_filter_bias(int(payload["small_region_filter_bias"]))
-
-    def set_brightfield_foolproof_analysis_settings(self, settings: dict) -> None:
-        payload = dict(settings or {})
-        if "threshold_bias" in payload:
-            self.set_brightfield_foolproof_threshold_bias(int(payload["threshold_bias"]))
+    def set_brightfield_area_analysis_settings(self, settings: dict) -> None:
+        for key, combo in (
+            ("threshold_bias", self.brightfield_detection_sensitivity_combo),
+            ("small_region_filter_bias", self.brightfield_small_region_filter_combo),
+        ):
+            if key in settings:
+                self._set_combo_data(combo, settings[key])
 
     def _build_qpcr_context_panel(self) -> QWidget:
         panel = QFrame()
@@ -2735,23 +2395,21 @@ class DataInputPanel(QFrame):
             (self.wb_integrity_label,'wb_integrity_unavailable',('Integrity badge unavailable','完整性状态暂不可用')),
         ):
             if label.text() in defaults:label.setText(tr(key))
-        mode_labels = {key: tr(key) for key in ("foolproof", "assisted", "expert")}
-        retranslate_combo(self.ihc_mode_combo, mode_labels)
-        retranslate_combo(self.ihc_task_type_combo, {"hematoxylin_rich": tr("ihc_task_hematoxylin_unavailable"),
-            "other_brightfield": tr("ihc_task_other_unavailable")})
-        retranslate_combo(self.brightfield_mode_combo, mode_labels)
-        retranslate_combo(self.brightfield_segmentation_mode_combo,
-            {key: tr("segmentation_" + key) for key in ("hsv", "lab", "grayscale")})
-        for combo in (self.ihc_quant_goal_combo, self.ihc_stats_metric_combo):
-            retranslate_combo(combo, {"Positive Area %": tr("positive_area_percent"),
-                "Mean DAB Intensity": tr("mean_dab_intensity"), "H-score": tr("h_score")})
+        self.ihc_threshold_calibration.retranslate()
+        self._update_ihc_sensitivity_label()
+        for combo, labels in (
+            (self.brightfield_detection_sensitivity_combo,
+             ("bf_detect_lowest", "bf_detect_lower", "bf_detect_default", "bf_detect_higher", "bf_detect_highest")),
+            (self.brightfield_small_region_filter_combo,
+             ("bf_filter_lowest", "bf_filter_lower", "bf_detect_default", "bf_filter_higher", "bf_filter_highest")),
+        ):
+            for index, key in enumerate(labels):
+                combo.setItemText(index, tr(key))
+        retranslate_combo(self.ihc_stats_metric_combo, {"Positive Area %": tr("positive_area_percent"),
+            "Mean DAB Intensity": tr("mean_dab_intensity"), "H-score": tr("h_score")})
         retranslate_combo(self.brightfield_stats_metric_combo, {
             "Area Fraction %": tr("area_fraction"), BRIGHTFIELD_SEGMENTED_REGION_COUNT_LABEL: tr("segmented_regions"),
             "Mean Object Area": tr("mean_object_area"), "ROI Mean Intensity": tr("roi_mean_intensity")})
-        for combo in (self.ihc_sensitivity_combo, self.brightfield_sensitivity_combo):
-            retranslate_combo(combo, {key: tr(key) for key in ("low", "medium", "high")})
-        for combo in (self.ihc_cleanup_combo, self.brightfield_cleanup_combo):
-            retranslate_combo(combo, {key: tr(key) for key in ("off", "low", "medium", "high")})
         retranslate_combo(self.brightfield_stats_plot_source_combo,
             {"traditional": tr("traditional_brightfield"), "ai_object_count": tr("he_fiber_area")})
         retranslate_combo(self.brightfield_stats_chart_mode_combo, {"summary": tr("summary"),
@@ -2898,9 +2556,7 @@ class DataInputPanel(QFrame):
             button.setChecked(button_index == index)
             button.setText(labels[button_index])
             button.blockSignals(False)
-        self.ihc_workflow_group.setVisible(index == 1)
         self.ihc_context_stack.setCurrentIndex(index)
-        self._sync_ihc_guided_mode()
         if emit_signal:
             self.ihc_step_changed.emit(index)
 
@@ -2913,7 +2569,7 @@ class DataInputPanel(QFrame):
             button.setText(labels[button_index])
             button.blockSignals(False)
         self.brightfield_context_stack.setCurrentIndex(index)
-        self._sync_brightfield_guided_mode()
+        self._sync_brightfield_analysis_controls()
         self._sync_brightfield_measure_type()
         if emit_signal:
             self.brightfield_step_changed.emit(index)
@@ -2996,11 +2652,6 @@ class DataInputPanel(QFrame):
         self.summary.setVisible(is_qpcr)
         self.ihc_context_panel.setVisible(is_ihc)
         self.brightfield_context_panel.setVisible(is_brightfield)
-        self.ihc_positive_threshold_spin.setVisible(is_ihc)
-        self.ihc_weak_threshold_spin.setVisible(is_ihc)
-        self.ihc_moderate_threshold_spin.setVisible(is_ihc)
-        self.ihc_strong_threshold_spin.setVisible(is_ihc)
-        self.ihc_min_area_spin.setVisible(is_ihc)
         self.ihc_run_analysis_button.setVisible(is_ihc)
         self.ihc_copy_table_button.setVisible(is_ihc)
         self.ihc_add_outputs_button.setVisible(is_ihc)
@@ -3016,7 +2667,6 @@ class DataInputPanel(QFrame):
         self.ihc_export_stats_csv_button.setVisible(is_ihc)
         self.ihc_stats_summary_label.setVisible(is_ihc)
         self.ihc_stats_chart_container.setVisible(is_ihc)
-        self.brightfield_segmentation_mode_combo.setVisible(is_brightfield)
         self.brightfield_preview_mask_button.setVisible(is_brightfield)
         self.brightfield_run_analysis_button.setVisible(is_brightfield)
         self.brightfield_he_fiber_calibrate_button.setVisible(is_brightfield)
@@ -3251,104 +2901,22 @@ class DataInputPanel(QFrame):
                 included.add(sample)
         return groups, included
 
-    def ihc_analysis_settings(self) -> dict[str, float | int | bool]:
+    def brightfield_he_fiber_analysis_settings(self) -> dict[str, float | int | str]:
         return {
-            "positive_threshold": float(self.ihc_positive_threshold_spin.value()),
-            "weak_threshold": float(self.ihc_weak_threshold_spin.value()),
-            "moderate_threshold": float(self.ihc_moderate_threshold_spin.value()),
-            "strong_threshold": float(self.ihc_strong_threshold_spin.value()),
-            "min_tissue_area_px": int(self.ihc_min_area_spin.value()),
-            "tissue_mask_enabled": False,
-        }
-
-    def set_ihc_analysis_settings(self, settings: dict) -> None:
-        payload = dict(settings or {})
-        spins = {
-            "positive_threshold": self.ihc_positive_threshold_spin,
-            "weak_threshold": self.ihc_weak_threshold_spin,
-            "moderate_threshold": self.ihc_moderate_threshold_spin,
-            "strong_threshold": self.ihc_strong_threshold_spin,
-        }
-        for key, spin in spins.items():
-            if key in payload and payload[key] is not None:
-                spin.setValue(float(payload[key]))
-        if "min_tissue_area_px" in payload and payload["min_tissue_area_px"] is not None:
-            self.ihc_min_area_spin.setValue(int(payload["min_tissue_area_px"]))
-
-    def brightfield_analysis_settings(self) -> dict[str, float | int | bool | str]:
-        return {
-            "segmentation_mode": str(self.brightfield_segmentation_mode_combo.currentData() or "hsv"),
-            "h_min": float(self.brightfield_h_min_spin.value()),
-            "h_max": float(self.brightfield_h_max_spin.value()),
-            "s_min": float(self.brightfield_s_min_spin.value()),
-            "s_max": float(self.brightfield_s_max_spin.value()),
-            "v_min": float(self.brightfield_v_min_spin.value()),
-            "v_max": float(self.brightfield_v_max_spin.value()),
-            "l_min": float(self.brightfield_l_min_spin.value()),
-            "l_max": float(self.brightfield_l_max_spin.value()),
-            "a_min": float(self.brightfield_a_min_spin.value()),
-            "a_max": float(self.brightfield_a_max_spin.value()),
-            "b_min": float(self.brightfield_b_min_spin.value()),
-            "b_max": float(self.brightfield_b_max_spin.value()),
-            "gray_threshold": float(self.brightfield_gray_threshold_spin.value()),
-            "gray_invert": bool(self.brightfield_gray_invert_checkbox.isChecked()),
-            "fill_holes": bool(self.brightfield_fill_holes_checkbox.isChecked()),
-            "cleanup_min_area_px": int(self.brightfield_cleanup_min_area_spin.value()),
-            "min_object_area_px": int(self.brightfield_min_object_area_spin.value()),
-            "max_object_area_px": int(self.brightfield_max_object_area_spin.value()),
             "he_fiber_foreground_sensitivity": int(self.brightfield_he_fiber_foreground_combo.currentData() or 50),
             "he_fiber_splitting_sensitivity": int(self.brightfield_he_fiber_splitting_slider.value()),
-            "he_fiber_segmentation_method": str(self.brightfield_he_fiber_method_combo.currentData() or "original"),
-            'he_fiber_cellpose_diameter_px': self.brightfield_he_fiber_cellpose_diameter_spin.value(),
+            "he_fiber_segmentation_method": str(self.brightfield_he_fiber_method_combo.currentData() or HE_FIBER_METHOD_CELLPOSE),
+            "he_fiber_cellpose_diameter_px": self.brightfield_he_fiber_cellpose_diameter_spin.value(),
         }
-
-    def set_brightfield_analysis_settings(self, settings: dict) -> None:
-        payload = dict(settings or {})
-        if "segmentation_mode" in payload:
-            self._set_combo_data(self.brightfield_segmentation_mode_combo, payload["segmentation_mode"])
-            self._sync_brightfield_segmentation_mode()
-        numeric = {
-            "h_min": self.brightfield_h_min_spin,
-            "h_max": self.brightfield_h_max_spin,
-            "s_min": self.brightfield_s_min_spin,
-            "s_max": self.brightfield_s_max_spin,
-            "v_min": self.brightfield_v_min_spin,
-            "v_max": self.brightfield_v_max_spin,
-            "l_min": self.brightfield_l_min_spin,
-            "l_max": self.brightfield_l_max_spin,
-            "a_min": self.brightfield_a_min_spin,
-            "a_max": self.brightfield_a_max_spin,
-            "b_min": self.brightfield_b_min_spin,
-            "b_max": self.brightfield_b_max_spin,
-            "gray_threshold": self.brightfield_gray_threshold_spin,
-        }
-        for key, spin in numeric.items():
-            if key in payload and payload[key] is not None:
-                spin.setValue(float(payload[key]))
-        if "gray_invert" in payload:
-            self.brightfield_gray_invert_checkbox.setChecked(bool(payload["gray_invert"]))
-        if "fill_holes" in payload:
-            self.brightfield_fill_holes_checkbox.setChecked(bool(payload["fill_holes"]))
-        if "cleanup_min_area_px" in payload and payload["cleanup_min_area_px"] is not None:
-            self.brightfield_cleanup_min_area_spin.setValue(int(payload["cleanup_min_area_px"]))
-        if "min_object_area_px" in payload and payload["min_object_area_px"] is not None:
-            self.brightfield_min_object_area_spin.setValue(int(payload["min_object_area_px"]))
-        if "max_object_area_px" in payload and payload["max_object_area_px"] is not None:
-            self.brightfield_max_object_area_spin.setValue(int(payload["max_object_area_px"]))
-        self.set_brightfield_he_fiber_analysis_settings(payload)
 
     def _update_he_fiber_splitting_label(self, value: int) -> None:
         self.brightfield_he_fiber_splitting_value_label.setText(str(int(value)))
 
     def set_brightfield_he_fiber_analysis_settings(self, settings: dict) -> None:
         payload = dict(settings or {})
-        method = str(payload.get("he_fiber_segmentation_method") or "original")
-        if method not in {"original", "anti_oversegmentation", *HE_FIBER_CELLPOSE_MODELS}:
-            method = "original"
-        method_index = self.brightfield_he_fiber_method_combo.findData(method)
+        method_index = self.brightfield_he_fiber_method_combo.findData(payload.get("he_fiber_segmentation_method"))
         self.brightfield_he_fiber_method_combo.blockSignals(True)
-        if method_index >= 0:
-            self.brightfield_he_fiber_method_combo.setCurrentIndex(method_index)
+        self.brightfield_he_fiber_method_combo.setCurrentIndex(max(0, method_index))
         self.brightfield_he_fiber_method_combo.blockSignals(False)
         self.brightfield_he_fiber_cellpose_diameter_spin.blockSignals(True)
         self.brightfield_he_fiber_cellpose_diameter_spin.setValue(float(payload.get('he_fiber_cellpose_diameter_px', 90.)))
@@ -3372,7 +2940,7 @@ class DataInputPanel(QFrame):
 
     def _sync_he_fiber_tuning_enabled(self) -> None:
         self.brightfield_he_fiber_model_hint.refresh()
-        anti = str(self.brightfield_he_fiber_method_combo.currentData() or "original") == "anti_oversegmentation"
+        anti = self.brightfield_he_fiber_method_combo.currentData() == "anti_oversegmentation"
         cellpose = self.brightfield_he_fiber_method_combo.currentData() in HE_FIBER_CELLPOSE_MODELS
         self.he_fiber_tuning_form.setRowVisible(self.brightfield_he_fiber_cellpose_diameter_spin, cellpose)
         self.brightfield_he_fiber_cellpose_diameter_spin.setEnabled(cellpose)
@@ -3389,14 +2957,6 @@ class DataInputPanel(QFrame):
             self.brightfield_he_fiber_foreground_combo.setToolTip(original_tip)
             self.brightfield_he_fiber_splitting_slider.setToolTip(original_tip)
             self.brightfield_he_fiber_tuning_group.setToolTip(tr("he_fiber_method_tooltip"))
-
-    def _load_he_fiber_reference(self) -> None:
-        method = self.brightfield_he_fiber_method_combo.currentData()
-        if method not in HE_FIBER_CELLPOSE_MODELS:
-            return
-        self.brightfield_he_fiber_cellpose_diameter_spin.setValue(50. if method==HE_FIBER_METHOD_BOUNDARY else 90.)
-        self.brightfield_min_object_area_spin.setValue(60)
-        self.brightfield_max_object_area_spin.setValue(0)
 
     def _sync_cellpose_controls(self, *_args) -> None:
         strategy=self.brightfield_cellpose_strategy_combo.currentData()
@@ -3432,7 +2992,8 @@ class DataInputPanel(QFrame):
         self.brightfield_cellpose_min_size_spin.setValue(int(settings.get('model_min_size_px',60)))
         self._brightfield_cellpose_strategy=settings.get('cellpose_strategy','general')
         if self._brightfield_cellpose_strategy not in ('general','local_contrast'):self._brightfield_cellpose_strategy='general'
-        choice=self._brightfield_cellpose_strategy if settings.get('backend')=='cellpose' else 'traditional'
+        backend=settings.get('backend', 'traditional' if settings else 'cellpose')
+        choice=self._brightfield_cellpose_strategy if backend=='cellpose' else 'traditional'
         self.brightfield_cellpose_strategy_combo.setCurrentIndex(self.brightfield_cellpose_strategy_combo.findData(choice))
         self._sync_cellpose_controls()
         controls = {

@@ -46,6 +46,7 @@ from core.brightfield_statistics import (
     summarize_brightfield_ai_object_count_measurements,
 )
 from core.ihc_statistics import compute_ihc_statistics
+from core.plotting.histology_processing import histology_input_context
 from core.image_analysis.brightfield_guided import BRIGHTFIELD_PREVIEW_DEBOUNCE_MS
 from core.style_preset_resolver import last_runtime_style_preset_status
 from core.measurement_freshness import (
@@ -71,7 +72,6 @@ from ui.controllers.analysis_job_service import AnalysisJobService
 from ui.controllers.chart_kind_controller import ChartKindController, selected_layout_items, unique_layout_object_refs
 from ui.controllers.panel_wheel_controller import filter_panel_wheel
 from ui.controllers.ihc_analysis_controller import IHCAnalysisController
-from ui.controllers.ihc_mode import normalize_ihc_mode
 from ui.module_selector import ModuleSelector
 from ui.dialogs.wb_export_dialog import WBExportDialog
 from ui.widgets.style_sidebar import StyleSidebar
@@ -121,6 +121,11 @@ class _MicroscopyImportResult:
     failed_path: str | None = None
     error: Exception | None = None
     preview: QImage | None = None
+
+    def dispose(self) -> None:
+        dispose = getattr(self.panel, "dispose", None)
+        if callable(dispose):
+            dispose()
 
 
 @dataclass(frozen=True)
@@ -338,8 +343,7 @@ class MainWindow(QMainWindow):
         self._active_wb_line_item = None
         self._ihc_example_samples_by_image: dict[str, list[dict[str, object]]] = {}
         self._ihc_active_example_mode = ""
-        self._syncing_ihc_mode = False
-        self._syncing_brightfield_mode = False
+        self._syncing_brightfield_area_controls = False
         self._brightfield_preview_debounce_timer = QTimer(self)
         self._brightfield_preview_debounce_timer.setSingleShot(True)
         self._brightfield_preview_debounce_timer.setInterval(BRIGHTFIELD_PREVIEW_DEBOUNCE_MS)
@@ -394,14 +398,6 @@ class MainWindow(QMainWindow):
 
     def _project_fingerprint(self) -> str:
         return sha256_json(self.project.to_dict())
-
-    @staticmethod
-    def _microscopy_import_project_fingerprint(project) -> str:
-        payload = deepcopy(project.to_dict())
-        payload["panels"] = [str(panel.panel_uuid) for panel in project.panels]
-        payload.pop("panel_registry", None)
-        payload.pop("browser_workspace_state", None)
-        return sha256_json(payload)
 
     def _capture_clean_project_baseline(self) -> None:
         self._clean_project_fingerprint = self._project_fingerprint()
@@ -533,12 +529,7 @@ class MainWindow(QMainWindow):
 
         self.ihc_analysis_controller = IHCAnalysisController(
             get_panel=self._active_ihc_panel,
-            get_expert_settings=self.data_panel.ihc_analysis_settings,
-            get_assisted_settings=self.data_panel.ihc_guided_analysis_settings,
-            get_foolproof_settings=self.data_panel.ihc_foolproof_analysis_settings,
-            get_current_mode=self.data_panel.current_ihc_guided_mode,
             get_overlay_opacity=self.data_panel.ihc_overlay_opacity,
-            get_current_task_type=self.data_panel.current_ihc_task_type,
             get_examples_for_image=lambda image_uid: list(self._ihc_example_samples_by_image.get(image_uid, [])),
             clear_examples_for_image=lambda image_uid: self._ihc_example_samples_by_image.pop(image_uid, None),
             clear_example_click_mode=lambda: self._set_ihc_example_click_mode(None),
@@ -552,11 +543,8 @@ class MainWindow(QMainWindow):
         self.brightfield_traditional_analysis_controller = BrightfieldTraditionalAnalysisController(
             get_panel=self._active_brightfield_panel,
             cancel_preview_debounce=self._cancel_brightfield_guided_preview_debounce,
-            get_current_mode=lambda: self._normalized_brightfield_mode(self.data_panel.current_brightfield_guided_mode()),
-            get_current_stain_type=lambda: self.data_panel.brightfield_stain_type_combo.currentText() or "H&E",
-            get_expert_settings=self.data_panel.brightfield_analysis_settings,
-            get_assisted_settings=self.data_panel.brightfield_guided_analysis_settings,
-            get_foolproof_settings=self.data_panel.brightfield_foolproof_analysis_settings,
+            get_current_stain_type=self.data_panel.brightfield_stain_type_combo.currentText,
+            get_settings=self.data_panel.brightfield_area_analysis_settings,
             refresh_measurement_views=self._refresh_brightfield_measurement_views,
             notify_user=lambda title, message: QMessageBox.information(self, title, message),
             report_failure=report_brightfield_failure,
@@ -566,7 +554,7 @@ class MainWindow(QMainWindow):
         )
         self.brightfield_ai_object_count_controller = BrightfieldAIObjectCountController(
             get_panel=self._active_brightfield_panel,
-            get_analysis_settings=self.data_panel.brightfield_analysis_settings,
+            get_analysis_settings=self.data_panel.brightfield_he_fiber_analysis_settings,
             show_ai_warning=self._show_brightfield_ai_warning,
             refresh_after_ai_measurement=self._refresh_brightfield_after_ai_measurement,
             run_async=self._analysis_job_service.start,
@@ -601,17 +589,16 @@ class MainWindow(QMainWindow):
         self.data_panel.ihc_delete_example_button.clicked.connect(self.delete_selected_ihc_example)
         self.data_panel.ihc_revert_auto_button.clicked.connect(self.revert_ihc_to_auto)
         self.data_panel.ihc_overlay_opacity_slider.valueChanged.connect(self.update_ihc_overlay_opacity)
-        self.data_panel.ihc_mode_combo.currentIndexChanged.connect(self._handle_ihc_mode_changed)
-        self.data_panel.ihc_try_assisted_button.clicked.connect(self.try_ihc_assisted_mode)
-        self.data_panel.brightfield_mode_combo.currentIndexChanged.connect(self._handle_brightfield_mode_changed)
-        self.data_panel.brightfield_foolproof_sensitivity_combo.currentIndexChanged.connect(
-            self._handle_brightfield_foolproof_sensitivity_changed
+        self.data_panel.ihc_detection_sensitivity_slider.valueChanged.connect(self.update_ihc_detection_sensitivity)
+        self.data_panel.ihc_reset_batch_threshold_button.clicked.connect(self.reset_ihc_batch_threshold)
+        self.data_panel.ihc_threshold_calibration.toggle.toggled.connect(
+            lambda expanded: None if expanded else self._set_ihc_example_click_mode(None)
         )
-        self.data_panel.brightfield_assisted_sensitivity_combo.currentIndexChanged.connect(
-            self._handle_brightfield_assisted_sensitivity_changed
+        self.data_panel.brightfield_detection_sensitivity_combo.currentIndexChanged.connect(
+            self._handle_brightfield_area_settings_changed
         )
-        self.data_panel.brightfield_assisted_small_region_filter_combo.currentIndexChanged.connect(
-            self._handle_brightfield_assisted_small_region_filter_changed
+        self.data_panel.brightfield_small_region_filter_combo.currentIndexChanged.connect(
+            self._handle_brightfield_area_settings_changed
         )
         self.data_panel.brightfield_preview_mask_button.clicked.connect(self.preview_brightfield_segmentation)
         self.data_panel.brightfield_run_analysis_button.clicked.connect(self.run_brightfield_analysis)
@@ -814,6 +801,12 @@ class MainWindow(QMainWindow):
         self.ihc_workspace.layout_to_composer_requested.connect(self.send_ihc_layout_to_composer)
         self.ihc_workspace.layout_canvas.scene.selectionChanged.connect(self._sync_chart_kind_controls)
         self.brightfield_workspace = BrightfieldWorkspace(self.data_panel.take_brightfield_context_panel())
+        self.data_panel.brightfield_segment_group.layout().insertWidget(0, self.brightfield_workspace.white_balance.widget)
+        self.data_panel.ihc_import_group.layout().insertWidget(0, self.ihc_workspace.white_balance.widget)
+        self.data_panel.ihc_context_stack.widget(1).layout().insertWidget(0, self.ihc_workspace.white_balance.input_widget)
+        for module in ('ihc', 'brightfield'):
+            getattr(self, module + '_workspace').white_balance.processing_changed.connect(
+                lambda name=module: self._histology_processing_changed(name))
         self.brightfield_workspace.files_dropped.connect(self.import_brightfield_images)
         self.brightfield_workspace.import_requested.connect(self.import_active_module)
         self.brightfield_workspace.remove_requested.connect(self.remove_selected_brightfield_image)
@@ -829,6 +822,7 @@ class MainWindow(QMainWindow):
         self.image_browser_workspace.status_changed.connect(lambda text: self.statusBar().showMessage(text, 4000))
         self.image_browser_workspace.export_failed.connect(lambda text: self.statusBar().showMessage(text, 4000))
         self.image_browser_workspace.send_to_fluorescence_transfer_requested.connect(self.import_browser_fluorescence_transfer)
+        self.image_browser_workspace.send_to_wb_requested.connect(self.import_wb_images)
         from ui.controllers.browser_histology_transfer_controller import BrowserHistologyTransferController
         self.browser_histology_transfer = BrowserHistologyTransferController(self)
         from ui.controllers.nuclei_count_controller import NucleiCountController
@@ -1043,6 +1037,8 @@ class MainWindow(QMainWindow):
         normalized_key = str(key)
         if normalized_key.startswith("import:"):
             self._handle_import_busy_changed(normalized_key, busy)
+            if normalized_key == "import:ihc":
+                self._update_ihc_sensitivity_controls(self._active_ihc_panel())
             return
         if normalized_key.startswith("fluoro-analysis:"):
             self.fluoro_workspace.set_analysis_busy(normalized_key.split(":", 1)[1], busy)
@@ -1065,6 +1061,9 @@ class MainWindow(QMainWindow):
                 )
             else:
                 button.setEnabled(self._analysis_button_enabled_before_busy.pop(normalized_key, True))
+        if normalized_key == "ihc":
+            self.data_panel.ihc_threshold_calibration.setEnabled(not busy)
+            self._update_ihc_sensitivity_controls(self._active_ihc_panel())
         self._sync_attempt_from_busy(normalized_key, busy)
         self._refresh_result_freshness_status()
 
@@ -1176,14 +1175,9 @@ class MainWindow(QMainWindow):
             panel = self._active_ihc_panel()
             image = panel.active_image() if panel is not None else None
             image_uid = str(image.get("uid", "")).strip() if image else ""
-            mode = self.data_panel.current_ihc_guided_mode()
-            if mode == "expert":
-                settings = dict(self.data_panel.ihc_analysis_settings())
-            elif mode == "assisted":
-                settings = dict(self.data_panel.ihc_guided_analysis_settings())
-            else:
-                settings = dict(self.data_panel.ihc_foolproof_analysis_settings())
-            settings["mode"] = mode
+            settings = {"mode": "foolproof", **panel.dab_auto_settings()}
+            if histology_input_context(image or {}):
+                settings['input_processing'] = histology_input_context(image)
             roi = panel.active_roi(image_uid) if panel is not None and image_uid else None
             calibration = panel.measurement_scale_bar(image_uid) if panel is not None and image_uid else None
             return build_analysis_inputs(method="ihc", settings=settings, image_uid=image_uid, roi=roi if isinstance(roi, dict) else None, calibration=calibration if isinstance(calibration, dict) else None)
@@ -1191,16 +1185,15 @@ class MainWindow(QMainWindow):
             panel = self._active_brightfield_panel()
             image = panel.active_image() if panel is not None else None
             image_uid = str(image.get("uid", "")).strip() if image else ""
-            mode = str(self.data_panel.current_brightfield_guided_mode() or "").strip().lower()
-            stain = str(self.data_panel.brightfield_stain_type_combo.currentText() or "H&E")
-            if mode == "expert":
-                settings = dict(self.data_panel.brightfield_analysis_settings())
-            elif mode == "assisted":
-                settings = dict(self.data_panel.brightfield_guided_analysis_settings())
-            else:
-                settings = dict(self.data_panel.brightfield_foolproof_analysis_settings())
-            settings["mode"] = mode
-            settings["stain_type"] = stain
+            stain = normalize_brightfield_stain_type(self.data_panel.brightfield_stain_type_combo.currentText())
+            settings = {"mode": "foolproof", "stain_type": stain}
+            if stain == "H&E":
+                area_settings = self.data_panel.brightfield_area_analysis_settings()
+                if not area_settings["small_region_filter_bias"]:
+                    area_settings.pop("small_region_filter_bias")
+                settings.update(area_settings)
+            if histology_input_context(image or {}):
+                settings['input_processing'] = histology_input_context(image)
             roi = panel.active_roi(image_uid) if panel is not None and image_uid else None
             calibration = panel.measurement_scale_bar(image_uid) if panel is not None and image_uid else None
             return build_analysis_inputs(method="brightfield", settings=settings, image_uid=image_uid, roi=roi if isinstance(roi, dict) else None, calibration=calibration if isinstance(calibration, dict) else None)
@@ -1209,6 +1202,8 @@ class MainWindow(QMainWindow):
             image = panel.active_image() if panel is not None else None
             image_uid = str(image.get("uid", "")).strip() if image else ""
             settings = dict(self.data_panel.bright_round_cell_analysis_settings())
+            if histology_input_context(image or {}):
+                settings['input_processing'] = histology_input_context(image)
             roi = panel.active_roi(image_uid) if panel is not None and image_uid else None
             calibration = panel.measurement_scale_bar(image_uid) if panel is not None and image_uid else None
             return build_analysis_inputs(method="bright_round_cells", settings=settings, image_uid=image_uid, roi=roi if isinstance(roi, dict) else None, calibration=calibration if isinstance(calibration, dict) else None)
@@ -1216,7 +1211,9 @@ class MainWindow(QMainWindow):
             panel = self._active_brightfield_panel()
             image = panel.active_image() if panel is not None else None
             image_uid = str(image.get("uid", "")).strip() if image else ""
-            settings = dict(self.data_panel.brightfield_analysis_settings())
+            settings = dict(self.data_panel.brightfield_he_fiber_analysis_settings())
+            if histology_input_context(image or {}):
+                settings['input_processing'] = histology_input_context(image)
             roi = panel.active_roi(image_uid) if panel is not None and image_uid else None
             calibration = panel.measurement_scale_bar(image_uid) if panel is not None and image_uid else None
             return build_analysis_inputs(method="brightfield_fiber", settings=settings, image_uid=image_uid, roi=roi if isinstance(roi, dict) else None, calibration=calibration if isinstance(calibration, dict) else None)
@@ -1225,6 +1222,15 @@ class MainWindow(QMainWindow):
                 {"fluoro_count": "count", "fluoro_ai": "ai", "fluoro_roi": "roi-intensity"}.get(method, "")
             )
         return None
+
+    def _histology_processing_changed(self, module: str) -> None:
+        if module == 'brightfield':
+            self._cancel_brightfield_guided_preview_debounce()
+            panel = self._active_brightfield_panel()
+            panel._transient_preview_state = {}
+            self.nuclei_controllers['brightfield'].sync()
+            self.myotube_controllers['brightfield'].sync()
+        self._refresh_result_freshness_status()
 
     def _freshness_record_for_method(self, method: str) -> dict[str, Any] | None:
         if method == "ihc":
@@ -1286,10 +1292,20 @@ class MainWindow(QMainWindow):
             return
         record = self._freshness_record_for_method(method)
         image_uid = record_image_uid(record) if record else self._active_image_uid_for_method(method)
+        saved_inputs = saved_inputs_from_record(record)
+        current_inputs = self._current_analysis_inputs(method)
+        if method == "ihc" and saved_inputs and record:
+            panel = self._active_ihc_panel()
+            baseline = record
+            if record.get("threshold_source") == "example_guided":
+                baseline = panel.measurement_by_uuid(record.get("prior_auto_measurement_uuid", "")) or record
+            if baseline.get("threshold_source") in {"batch_locked", "batch_initialized"}:
+                saved_inputs["batch_positive_threshold"] = baseline.get("params", {}).get("positive_threshold")
+                current_inputs["batch_positive_threshold"] = panel.locked_dab_batch_threshold()
         status = display_status(
             has_result=isinstance(record, dict),
-            saved_inputs=saved_inputs_from_record(record) if record else None,
-            current_inputs=self._current_analysis_inputs(method),
+            saved_inputs=saved_inputs,
+            current_inputs=current_inputs,
             attempt=self._attempt_state(image_uid, method),
         )
         if isinstance(status, tuple):
@@ -1305,11 +1321,14 @@ class MainWindow(QMainWindow):
         if not getattr(self, "_freshness_alive", False):
             return
         data = self.data_panel
-        fluoro = self.fluoro_workspace
         self._set_freshness_label(getattr(data, "ihc_freshness_status_label", None), "ihc")
         self._set_freshness_label(getattr(data, "brightfield_freshness_status_label", None), "brightfield")
         self._set_freshness_label(getattr(data, "brightfield_cell_freshness_status_label", None), "bright_round_cells")
         self._set_freshness_label(getattr(data, "brightfield_ai_freshness_status_label", None), "brightfield_fiber")
+        self._refresh_fluoro_freshness_status()
+
+    def _refresh_fluoro_freshness_status(self) -> None:
+        fluoro = self.fluoro_workspace
         self._set_freshness_label(getattr(fluoro, "count_freshness_status_label", None), "fluoro_count")
         self._set_freshness_label(getattr(fluoro, "ai_freshness_status_label", None), "fluoro_ai")
         self._set_freshness_label(getattr(fluoro, "roi_freshness_status_label", None), "fluoro_roi")
@@ -1324,20 +1343,11 @@ class MainWindow(QMainWindow):
 
     def _connect_freshness_setting_watchers(self) -> None:
         data, fluoro = self.data_panel, self.fluoro_workspace
+        fluoro.analysis_context_changed.connect(self._refresh_fluoro_freshness_status)
         widgets = [
-            data.ihc_mode_combo, data.ihc_task_type_combo, data.ihc_sensitivity_combo, data.ihc_cleanup_combo,
-            data.ihc_tissue_correction_checkbox, data.ihc_positive_threshold_spin, data.ihc_weak_threshold_spin,
-            data.ihc_moderate_threshold_spin, data.ihc_strong_threshold_spin, data.ihc_min_area_spin,
             data.ihc_active_image_combo, data.ihc_results_table,
-            data.brightfield_mode_combo, data.brightfield_stain_type_combo, data.brightfield_sensitivity_combo,
-            data.brightfield_cleanup_combo, data.brightfield_foolproof_sensitivity_combo,
-            data.brightfield_assisted_sensitivity_combo, data.brightfield_assisted_small_region_filter_combo,
-            data.brightfield_segmentation_mode_combo, data.brightfield_h_min_spin, data.brightfield_h_max_spin,
-            data.brightfield_s_min_spin, data.brightfield_s_max_spin, data.brightfield_v_min_spin, data.brightfield_v_max_spin,
-            data.brightfield_l_min_spin, data.brightfield_l_max_spin, data.brightfield_a_min_spin, data.brightfield_a_max_spin,
-            data.brightfield_b_min_spin, data.brightfield_b_max_spin, data.brightfield_gray_threshold_spin,
-            data.brightfield_gray_invert_checkbox, data.brightfield_fill_holes_checkbox,
-            data.brightfield_cleanup_min_area_spin, data.brightfield_min_object_area_spin, data.brightfield_max_object_area_spin,
+            data.brightfield_stain_type_combo, data.brightfield_detection_sensitivity_combo,
+            data.brightfield_small_region_filter_combo,
             data.brightfield_he_fiber_method_combo, data.brightfield_he_fiber_foreground_combo,
             data.brightfield_he_fiber_cellpose_diameter_spin,
             data.brightfield_he_fiber_splitting_slider, data.brightfield_measure_type_combo,
@@ -1455,7 +1465,6 @@ class MainWindow(QMainWindow):
         if self._analysis_job_service.is_busy(key):
             return False
         project = self.project
-        project_fingerprint = self._microscopy_import_project_fingerprint(project)
         panel_fingerprint = analysis_job_fingerprint(panel)
         try:
             snapshot = self._clone_panel_for_worker(panel)
@@ -1476,8 +1485,8 @@ class MainWindow(QMainWindow):
             try:
                 return (
                     self.project is project
+                    and any(candidate is panel for candidate in project.panels)
                     and self._active_fluoro_panel() is panel
-                    and self._microscopy_import_project_fingerprint(project) == project_fingerprint
                     and analysis_job_fingerprint(panel) == panel_fingerprint
                     and bool(is_settings_current())
                 )
@@ -1486,10 +1495,7 @@ class MainWindow(QMainWindow):
 
         def apply_result(result: _FluorescenceAnalysisResult) -> None:
             result_panel = result.panel
-            panel.data = result_panel.data
-            panel.analysis = result_panel.analysis
-            panel.audit_log = result_panel.audit_log
-            panel.modified_at = result_panel.modified_at
+            self._apply_analysis_panel_snapshot(panel, result_panel)
             panel.adopt_imported_cache(result_panel, result_panel.worker_owned_cached_image_uids())
             on_success(result.output)
             self.statusBar().showMessage(tr("fluorescence_analysis_complete"), 4000)
@@ -1812,6 +1818,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText(status_text)
         self._apply_button_readability_policy()
         self._set_language_button_state(language)
+        if self.active_module == "ihc":
+            self._update_ihc_sensitivity_controls(self._active_ihc_panel())
 
     def _v9_stage_tools_for_module(self, module_id: str) -> list[tuple[str, object]]:
         fit = self._refresh_active_canvas_layout
@@ -2125,7 +2133,7 @@ class MainWindow(QMainWindow):
             if self.composer_workspace._focus_mode:self.composer_workspace.toggle_focus()
             self.v9_shell.right_layout.insertWidget(1,self.chart_kind_controls)
         if hasattr(self, "analysis_state"):
-            previous = {"ihc": "ihc", "brightfield": "brightfield", "fluoro": "fluorescence"}.get(self.active_module)
+            previous = {"brightfield": "brightfield", "fluoro": "fluorescence"}.get(self.active_module)
             if previous:
                 self.analysis_state.capture_outgoing(previous)
         if self.active_module == "brightfield" or module_id == "brightfield":
@@ -2208,9 +2216,7 @@ class MainWindow(QMainWindow):
             elif panel.active_image() is not None:
                 self._refresh_ihc_preview(panel)
             self._update_ihc_qc_status(measurement)
-            self._update_ihc_assisted_ui_state(panel)
-            if hasattr(self, "analysis_state"):
-                self.analysis_state.restore_incoming("ihc")
+            self._update_ihc_calibration_ui_state(panel)
         elif module_id == "brightfield":
             self.canvas_stack.setCurrentWidget(self.brightfield_workspace)
             panel = self._active_brightfield_panel()
@@ -2888,7 +2894,6 @@ class MainWindow(QMainWindow):
             return
 
         project = self.project
-        project_fingerprint = self._microscopy_import_project_fingerprint(project)
         panel_fingerprint = sha256_json(panel.to_dict())
         transfers = {str(path): deepcopy(payload) for path, payload in dict(transfer_by_path or {}).items()}
         try:
@@ -2929,8 +2934,8 @@ class MainWindow(QMainWindow):
             try:
                 return (
                     self.project is project
+                    and any(candidate is panel for candidate in project.panels)
                     and current_panel() is panel
-                    and self._microscopy_import_project_fingerprint(project) == project_fingerprint
                     and sha256_json(panel.to_dict()) == panel_fingerprint
                 )
             except Exception:
@@ -2986,10 +2991,7 @@ class MainWindow(QMainWindow):
         if module_id == "fluoro":
             self.fluoro_workspace.set_panel(panel, refresh=False)
             self.fluoro_workspace.refresh(refresh_canvas=False)
-            if str(self.fluoro_workspace.mode_combo.currentData() or "").lower() == "one_click":
-                self.fluoro_workspace.set_step(4, refresh=False)
-            else:
-                self.fluoro_workspace.set_step(1, refresh=False)
+            self.fluoro_workspace.set_step(1, refresh=False)
             self.fluoro_workspace._refresh_canvas()
             self.project.append_audit("import_fluorescence_images", ", ".join(imported_names))
             self.statusBar().showMessage(
@@ -3014,7 +3016,7 @@ class MainWindow(QMainWindow):
             self._sync_ihc_controls_from_panel(panel)
             self._refresh_ihc_preview(panel, preview=preview)
             self._update_ihc_qc_status(self._active_ihc_measurement(panel))
-            self._update_ihc_assisted_ui_state(panel)
+            self._update_ihc_calibration_ui_state(panel)
             self.statusBar().showMessage(
                 trf(
                     "imported_images_status",
@@ -3251,37 +3253,24 @@ class MainWindow(QMainWindow):
 
     def _sync_ihc_controls_from_panel(self, panel: IHCPanel) -> None:
         guided_state = dict(panel.data.get("guided_state", {}))
-        self._syncing_ihc_mode = True
-        try:
-            self.data_panel.set_ihc_guided_mode(normalize_ihc_mode(guided_state.get("guided_mode")))
-        finally:
-            self._syncing_ihc_mode = False
-        self._set_combo_data(self.data_panel.ihc_sensitivity_combo, str(guided_state.get("sensitivity", "medium")))
-        self._set_combo_data(self.data_panel.ihc_cleanup_combo, str(guided_state.get("cleanup_level", "medium")))
-        self.data_panel.ihc_tissue_correction_checkbox.setChecked(bool(guided_state.get("tissue_background_correction", True)))
         self.data_panel.set_ihc_overlay_opacity(float(guided_state.get("overlay_opacity", 0.35)))
+        self.data_panel.set_ihc_detection_sensitivity(panel.dab_auto_settings()["sensitivity"])
+        self._update_ihc_sensitivity_controls(panel)
 
     def _sync_brightfield_controls_from_panel(self, panel: BrightfieldPanel) -> None:
         guided_state = panel._merge_guided_state(panel.data.get("guided_state"))
         panel.data["guided_state"] = dict(guided_state)
-        self._syncing_brightfield_mode = True
+        self._syncing_brightfield_area_controls = True
         try:
-            self.data_panel.set_brightfield_guided_mode(self._normalized_brightfield_mode(guided_state.get("guided_mode")))
-            self.data_panel.set_brightfield_foolproof_threshold_bias(int(guided_state.get("foolproof_threshold_bias", 0)))
-            self.data_panel.set_brightfield_assisted_threshold_bias(int(guided_state.get("assisted_threshold_bias", 0)))
-            self.data_panel.set_brightfield_assisted_small_region_filter_bias(
-                int(guided_state.get("assisted_small_region_filter_bias", 0))
-            )
+            self.data_panel.set_brightfield_area_analysis_settings(guided_state)
         finally:
-            self._syncing_brightfield_mode = False
-        self._set_combo_data(self.data_panel.brightfield_sensitivity_combo, str(guided_state.get("sensitivity", "medium")))
-        self._set_combo_data(self.data_panel.brightfield_cleanup_combo, str(guided_state.get("cleanup_level", "low")))
+            self._syncing_brightfield_area_controls = False
         self._update_brightfield_batch_threshold_ui_state(panel)
         self._update_brightfield_he_fiber_calibration_status(panel)
 
     def _persist_brightfield_he_fiber_settings(self) -> None:
         panel = self._active_brightfield_panel()
-        panel.persist_he_fiber_analysis_settings(self.data_panel.brightfield_analysis_settings())
+        panel.persist_he_fiber_analysis_settings(self.data_panel.brightfield_he_fiber_analysis_settings())
 
     def _update_brightfield_he_fiber_calibration_status(self, panel: BrightfieldPanel) -> None:
         self.data_panel.set_brightfield_he_fiber_analysis_settings(dict(panel.data.get("analysis_settings", {})))
@@ -3491,14 +3480,6 @@ class MainWindow(QMainWindow):
         self._sync_brightfield_stats_controls(panel)
         self._restore_brightfield_statistics_view(panel)
 
-    def _normalized_brightfield_mode(self, mode: object) -> str:
-        normalized = str(mode or "").strip().lower()
-        if normalized == "guided":
-            return "foolproof"
-        if normalized in {"assisted", "expert"}:
-            return normalized
-        return "foolproof"
-
     def _set_combo_data(self, combo, value: str) -> None:
         index = combo.findData(value)
         if index >= 0:
@@ -3575,31 +3556,69 @@ class MainWindow(QMainWindow):
             return
         self.data_panel.ihc_qc_status_label.setText(tr("qc_awaiting_analysis"))
 
-    def _update_ihc_assisted_ui_state(self, panel: IHCPanel) -> None:
-        is_assisted = str(self.data_panel.current_ihc_guided_mode() or "").strip().lower() == "assisted"
+    def _update_ihc_sensitivity_controls(self, panel: IHCPanel) -> None:
         active_image = panel.active_image()
-        image_uid = str(active_image.get("uid", "")).strip() if active_image is not None else ""
-        measurement = self._active_ihc_measurement(panel) if active_image is not None else None
-        can_sample = is_assisted and active_image is not None and measurement is not None
-        can_revert = False
-        if is_assisted and active_image is not None and measurement is not None:
-            auto_uuid = str(dict(panel.data.get("guided_state", {})).get("auto_measurement_uuid_by_image", {}).get(image_uid, "")).strip()
-            can_revert = bool(auto_uuid)
-        samples = list(self._ihc_example_samples_by_image.get(image_uid, [])) if image_uid else []
+        locked = panel.locked_dab_batch_threshold() is not None
+        busy = any(self._analysis_job_service.is_busy(key) for key in ("ihc", "import:ihc"))
+        controls = self.data_panel
+        controls.ihc_detection_sensitivity_slider.setEnabled(active_image is not None and not locked and not busy)
+        controls.ihc_detection_sensitivity_slider.setToolTip(
+            tr("ihc_sensitivity_locked_hint" if locked else "ihc_sensitivity_hint")
+        )
+        controls.ihc_reset_batch_threshold_button.setVisible(locked and active_image is not None)
+        controls.ihc_reset_batch_threshold_button.setEnabled(not busy)
+        image_uid = str(active_image["uid"]) if active_image else ""
+        controls.ihc_batch_threshold_label.setText(self._format_ihc_batch_threshold_status(panel, image_uid))
+
+    def update_ihc_detection_sensitivity(self) -> None:
+        if self.active_module != "ihc":
+            return
+        panel = self._active_ihc_panel()
+        slider = self.data_panel.ihc_detection_sensitivity_slider
+        previous = panel.dab_auto_settings()["sensitivity"]
+        if not slider.isEnabled():
+            self.data_panel.set_ihc_detection_sensitivity(previous)
+        else:
+            sensitivity = self.data_panel.ihc_detection_sensitivity()
+            if sensitivity != previous:
+                panel.data["dab_detection_sensitivity"] = sensitivity
+        self.data_panel._update_ihc_sensitivity_label()
+        self._refresh_result_freshness_status()
+
+    def reset_ihc_batch_threshold(self) -> None:
+        if self.active_module != "ihc" or not self.data_panel.ihc_reset_batch_threshold_button.isEnabled():
+            return
+        panel = self._active_ihc_panel()
+        panel.reset_dab_batch_threshold()
+        self._set_ihc_example_click_mode(None)
+        self._update_ihc_sensitivity_controls(panel)
+        self._refresh_result_freshness_status()
+        self.statusBar().showMessage(tr("ihc_batch_threshold_reset_status"), 4000)
+
+    def _update_ihc_calibration_ui_state(self, panel: IHCPanel) -> None:
+        active_image = panel.active_image()
+        image_uid = str(active_image["uid"]) if active_image else ""
+        auto_measurement = panel._resolve_saved_auto_measurement(image_uid) if image_uid else None
+        can_sample = auto_measurement is not None
+        samples = list(self._ihc_example_samples_by_image.get(image_uid, [])) if can_sample else []
+        calibrated = image_uid in dict(
+            dict(panel.data.get("guided_state") or {}).get("batch_threshold_state") or {}
+        ).get("example_guided_overrides", {})
+        self.data_panel.ihc_threshold_calibration.setVisible(can_sample)
         self.data_panel.populate_ihc_example_samples(samples)
-        self.ihc_workspace.set_example_markers(samples if is_assisted else [])
-        self.data_panel.ihc_examples_list.setEnabled(is_assisted and bool(samples))
-        self.data_panel.ihc_delete_example_button.setEnabled(is_assisted and bool(samples))
-        self.data_panel.ihc_batch_threshold_label.setText(self._format_ihc_batch_threshold_status(panel, image_uid))
-        self.data_panel.set_ihc_assisted_action_state(
+        self.ihc_workspace.set_example_markers(samples)
+        self.data_panel.ihc_examples_list.setEnabled(bool(samples))
+        self.data_panel.ihc_delete_example_button.setEnabled(bool(samples))
+        self._update_ihc_sensitivity_controls(panel)
+        self.data_panel.set_ihc_calibration_action_state(
             can_sample=can_sample,
-            can_recalibrate=is_assisted and bool(samples),
-            can_revert=is_assisted and (can_revert or bool(samples)),
+            can_recalibrate=bool(samples),
+            can_revert=can_sample and (calibrated or bool(samples)),
         )
         self.data_panel.ihc_export_overlay_button.setEnabled(active_image is not None)
         self.data_panel.ihc_export_results_csv_button.setEnabled(bool(panel.analysis.get("ihc_measurements")))
         self.data_panel.ihc_export_summary_json_button.setEnabled(bool(panel.analysis.get("ihc_measurements")))
-        if not is_assisted:
+        if not can_sample:
             self._set_ihc_example_click_mode(None)
 
     def _format_ihc_batch_threshold_status(self, panel: IHCPanel, image_uid: str) -> str:
@@ -3608,20 +3627,19 @@ class MainWindow(QMainWindow):
         threshold = batch_state.get("batch_threshold")
         if threshold is None:
             return tr("batch_threshold_waiting")
-        parts = [
-            f"Batch threshold: {'locked' if bool(batch_state.get('locked', False)) else 'current'} {float(threshold):.3f}"
-        ]
+        key = "ihc_batch_threshold_locked" if batch_state.get("locked") else "ihc_batch_threshold_current"
+        parts = [trf(key, threshold=float(threshold))]
         source_uid = str(batch_state.get("batch_threshold_source_image", "")).strip()
         if source_uid:
             source_image = next((image for image in panel.images() if str(image.get("uid", "")).strip() == source_uid), None)
             if source_image is not None:
-                parts.append(f"Seed image: {source_image.get('source_name', source_uid)}")
+                parts.append(trf("ihc_batch_threshold_seed", name=source_image.get("source_name", source_uid)))
         override_value = dict(batch_state.get("example_guided_overrides", {})).get(image_uid)
         if override_value is not None:
-            parts.append(f"This image override: {float(override_value):.3f}")
+            parts.append(trf("ihc_batch_threshold_override", threshold=float(override_value)))
         override_warnings = list(batch_state.get("override_warnings", []))
         if override_warnings:
-            parts.append(f"Overrides logged: {len(override_warnings)}")
+            parts.append(trf("ihc_batch_threshold_overrides", count=len(override_warnings)))
         return " | ".join(parts)
 
     def _set_ihc_example_click_mode(self, mode: str | None) -> None:
@@ -3665,7 +3683,7 @@ class MainWindow(QMainWindow):
         self._update_ihc_qc_status(measurement)
         self._set_ihc_measurement_summary(measurement)
         self._refresh_result_freshness_status()
-        self._update_ihc_assisted_ui_state(panel)
+        self._update_ihc_calibration_ui_state(panel)
         self.ihc_workspace.canvas.show_overlay_preview()
         if status_message:
             self.statusBar().showMessage(status_message, 3000)
@@ -3689,8 +3707,6 @@ class MainWindow(QMainWindow):
             return
         image_uid = str(active_image.get("uid", ""))
         example_markers = self._ihc_example_samples_by_image.get(image_uid, [])
-        if str(self.data_panel.current_ihc_guided_mode() or "").strip().lower() != "assisted":
-            example_markers = []
         self.ihc_workspace.set_example_markers(example_markers)
         roi_rect = None
         if measurement_uuid is not None:
@@ -3837,8 +3853,6 @@ class MainWindow(QMainWindow):
     def select_ihc_image(self, image_uid: str) -> None:
         if self.active_module != "ihc":
             return
-        if hasattr(self, "analysis_state"):
-            self.analysis_state.capture_outgoing("ihc")
         panel = self._active_ihc_panel()
         panel.set_active_image(image_uid)
         self._sync_ihc_controls_from_panel(panel)
@@ -3848,9 +3862,7 @@ class MainWindow(QMainWindow):
         self._update_ihc_measurement_status(measurement)
         self._update_ihc_qc_status(measurement)
         self._set_ihc_measurement_summary(measurement)
-        self._update_ihc_assisted_ui_state(panel)
-        if hasattr(self, "analysis_state"):
-            self.analysis_state.restore_incoming("ihc")
+        self._update_ihc_calibration_ui_state(panel)
         self._refresh_result_freshness_status()
 
     def select_ihc_measurement_result(self, measurement_uuid: str) -> None:
@@ -3859,8 +3871,6 @@ class MainWindow(QMainWindow):
         target_uuid = str(measurement_uuid).strip()
         if not target_uuid:
             return
-        if hasattr(self, "analysis_state"):
-            self.analysis_state.capture_outgoing("ihc")
         panel = self._active_ihc_panel()
         measurement = panel.measurement_by_uuid(target_uuid)
         if measurement is None:
@@ -3874,9 +3884,7 @@ class MainWindow(QMainWindow):
         self._update_ihc_measurement_status(measurement)
         self._update_ihc_qc_status(measurement)
         self._set_ihc_measurement_summary(measurement)
-        self._update_ihc_assisted_ui_state(panel)
-        if hasattr(self, "analysis_state"):
-            self.analysis_state.restore_incoming("ihc")
+        self._update_ihc_calibration_ui_state(panel)
         self._refresh_result_freshness_status()
 
     def toggle_ihc_roi_selection(self, enabled: bool) -> None:
@@ -4029,79 +4037,12 @@ class MainWindow(QMainWindow):
         if self.active_module == "ihc" and measurement is not None:
             self._refresh_ihc_preview(panel, measurement_uuid=str(measurement.get("measurement_uuid", "")))
 
-    def try_ihc_assisted_mode(self) -> None:
-        self.data_panel.set_ihc_guided_mode("assisted")
-
-    def _handle_ihc_mode_changed(self) -> None:
-        if self._syncing_ihc_mode:
-            return
-        panel = self._active_ihc_panel()
-        new_mode = normalize_ihc_mode(self.data_panel.current_ihc_guided_mode())
-        guided_state = dict(panel.data.get("guided_state", {}))
-        previous_mode = normalize_ihc_mode(guided_state.get("guided_mode"))
-        guided_state["guided_mode"] = new_mode
-        panel.data["guided_state"] = guided_state
-        if previous_mode != new_mode:
-            panel.append_audit(
-                "ihc_mode_switch",
-                f"old_mode={previous_mode}; new_mode={new_mode}; source=ihc_mode_combo",
-            )
-        self._update_ihc_assisted_ui_state(panel)
-        if hasattr(self, "analysis_state"):
-            self.analysis_state.capture_outgoing("ihc")
-            self.analysis_state.reload_bar("ihc")
-
-    def _handle_brightfield_mode_changed(self) -> None:
-        if self._syncing_brightfield_mode:
-            return
-        panel = self._active_brightfield_panel()
-        new_mode = self._normalized_brightfield_mode(self.data_panel.current_brightfield_guided_mode())
-        guided_state = panel._merge_guided_state(panel.data.get("guided_state"))
-        previous_mode = self._normalized_brightfield_mode(guided_state.get("guided_mode"))
-        guided_state["guided_mode"] = new_mode
-        panel.data["guided_state"] = guided_state
-        if previous_mode != new_mode:
-            panel.append_audit(
-                "brightfield_mode_switch",
-                f"old_mode={previous_mode}; new_mode={new_mode}; source=brightfield_mode_combo",
-            )
-        panel._transient_preview_state = {}
-        self._cancel_brightfield_guided_preview_debounce()
-        self._update_brightfield_batch_threshold_ui_state(panel)
-        if hasattr(self, "analysis_state"):
-            self.analysis_state.capture_outgoing("brightfield")
-            self.analysis_state.reload_bar("brightfield")
-
-    def _handle_brightfield_foolproof_sensitivity_changed(self) -> None:
-        if self._syncing_brightfield_mode or self.active_module != "brightfield":
+    def _handle_brightfield_area_settings_changed(self) -> None:
+        if self._syncing_brightfield_area_controls or self.active_module != "brightfield":
             return
         panel = self._active_brightfield_panel()
         guided_state = panel._merge_guided_state(panel.data.get("guided_state"))
-        guided_state["foolproof_threshold_bias"] = self.data_panel.current_brightfield_foolproof_threshold_bias()
-        panel.data["guided_state"] = guided_state
-        panel._transient_preview_state = {}
-        if self._should_debounce_brightfield_guided_preview():
-            self._queue_brightfield_guided_preview_debounce()
-
-    def _handle_brightfield_assisted_sensitivity_changed(self) -> None:
-        if self._syncing_brightfield_mode or self.active_module != "brightfield":
-            return
-        panel = self._active_brightfield_panel()
-        guided_state = panel._merge_guided_state(panel.data.get("guided_state"))
-        guided_state["assisted_threshold_bias"] = self.data_panel.current_brightfield_assisted_threshold_bias()
-        panel.data["guided_state"] = guided_state
-        panel._transient_preview_state = {}
-        if self._should_debounce_brightfield_guided_preview():
-            self._queue_brightfield_guided_preview_debounce()
-
-    def _handle_brightfield_assisted_small_region_filter_changed(self) -> None:
-        if self._syncing_brightfield_mode or self.active_module != "brightfield":
-            return
-        panel = self._active_brightfield_panel()
-        guided_state = panel._merge_guided_state(panel.data.get("guided_state"))
-        guided_state["assisted_small_region_filter_bias"] = (
-            self.data_panel.current_brightfield_assisted_small_region_filter_bias()
-        )
+        guided_state.update(self.data_panel.brightfield_area_analysis_settings())
         panel.data["guided_state"] = guided_state
         panel._transient_preview_state = {}
         if self._should_debounce_brightfield_guided_preview():
@@ -4132,9 +4073,8 @@ class MainWindow(QMainWindow):
         panel = self._active_brightfield_panel()
         if panel.active_image() is None:
             return False
-        mode = self._normalized_brightfield_mode(self.data_panel.current_brightfield_guided_mode())
-        stain_type = normalize_brightfield_stain_type(self.data_panel.brightfield_stain_type_combo.currentText() or "H&E")
-        return mode in {"foolproof", "assisted"} and stain_type == "H&E"
+        stain_type = normalize_brightfield_stain_type(self.data_panel.brightfield_stain_type_combo.currentText())
+        return stain_type == "H&E"
 
     def _flush_brightfield_preview_debounce(self) -> None:
         if not self._brightfield_preview_debounce_pending:
@@ -4223,7 +4163,7 @@ class MainWindow(QMainWindow):
             if source == "overlay":
                 target = self.export_ihc_overlay_image_to_path(normalized_path)
             else:
-                target = self.export_ihc_original_image_to_path(normalized_path)
+                target = self.export_ihc_original_image_to_path(normalized_path, adjusted=source == 'adjusted')
         except (ValueError, OSError) as exc:
             QMessageBox.information(self, tr("ihc_export_title"), str(exc))
             return
@@ -4256,7 +4196,7 @@ class MainWindow(QMainWindow):
     def export_ihc_overlay_png_to_path(self, path: str | Path) -> Path:
         return self.export_ihc_overlay_image_to_path(path)
 
-    def export_ihc_original_image_to_path(self, path: str | Path) -> Path:
+    def export_ihc_original_image_to_path(self, path: str | Path, *, adjusted: bool = False) -> Path:
         from ui.panels.ihc_workspace import apply_ihc_native_export_scale
 
         panel = self._active_ihc_panel()
@@ -4264,7 +4204,7 @@ class MainWindow(QMainWindow):
         if active is None:
             raise ValueError("Import an IHC image before exporting.")
         image_uid = str(active.get("uid", "")).strip()
-        image = panel.source_qimage(image_uid)
+        image = panel.display_qimage(image_uid) if adjusted else panel.source_qimage(image_uid)
         image = apply_ihc_native_export_scale(
             image,
             panel,
@@ -4401,10 +4341,10 @@ class MainWindow(QMainWindow):
         self,
         panel: BrightfieldPanel,
         measurement_uuid: str | None = None,
-        preview_settings: dict | None = None,
         preview_payload: dict | None = None,
         preview: QImage | None = None,
     ) -> None:
+        self.brightfield_workspace.white_balance.sync()
         if hasattr(self,'myotube_controllers'):
             self.myotube_controllers['brightfield'].sync()
         canvas = self.brightfield_workspace.canvas
@@ -4417,6 +4357,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText(localized_module_placeholder("brightfield")["status"])
             return
         image_uid = str(active_image.get("uid", ""))
+        overlay_cache_key = None
         cell_measurement = next((m for m in reversed(panel.analysis.get("bright_round_cell_diameter_measurements", []))
                                  if m.get("image_uid") == image_uid), None)
         self.data_panel.populate_bright_round_cell_results(cell_measurement)
@@ -4430,6 +4371,11 @@ class MainWindow(QMainWindow):
             measurement = panel.measurement_by_uuid(measurement_uuid)
             if measurement is not None:
                 roi_rect = self._brightfield_roi_rect_from_snapshot(dict(measurement.get("roi", {})))
+                overlay_cache_key = (
+                    str(panel.panel_uuid),
+                    image_uid,
+                    panel._brightfield_analysis_mask_cache_key(measurement),
+                )
         if roi_rect is None:
             roi_rect = self._brightfield_roi_rect_from_snapshot(dict(active_image.get("roi", {})))
         if roi_rect is not None:
@@ -4460,6 +4406,7 @@ class MainWindow(QMainWindow):
                 enable_roi_selection=roi_selection_enabled,
                 is_overlay=True,
             )
+            canvas._measurement_overlay_cache_key = overlay_cache_key
             self.status_label.setText(trf("brightfield_segmentation_preview", name=active_image.get("source_name", "")))
             return
         if preview is not None:
@@ -4483,42 +4430,35 @@ class MainWindow(QMainWindow):
             )
             has_original = True
         overlay_applied = False
-        if preview_settings is not None:
-            overlay = panel.render_segmentation_overlay(image_uid=image_uid, settings=preview_settings)
-            overlay_image = QImage(
-                overlay.data,
-                overlay.shape[1],
-                overlay.shape[0],
-                overlay.strides[0],
-                QImage.Format.Format_RGB888,
-            ).copy()
-            canvas.set_display_state(
-                QPixmap.fromImage(overlay_image),
-                title=tr("brightfield_segmentation_overlay"),
-                body=str(active_image.get("source_name", "")),
-                roi_rect=roi_rect,
-                enable_roi_selection=roi_selection_enabled,
-                is_overlay=True,
+        if measurement is not None:
+            cached_overlay = (
+                overlay_cache_key is not None
+                and canvas.has_overlay_pixmap()
+                and canvas._measurement_overlay_cache_key == overlay_cache_key
             )
-            self.status_label.setText(trf("brightfield_segmentation_preview", name=active_image.get("source_name", "")))
-            overlay_applied = True
-        elif measurement is not None:
-            overlay = panel.render_measurement_overlay(image_uid=image_uid, measurement_uuid=measurement_uuid)
-            overlay_image = QImage(
-                overlay.data,
-                overlay.shape[1],
-                overlay.shape[0],
-                overlay.strides[0],
-                QImage.Format.Format_RGB888,
-            ).copy()
-            canvas.set_display_state(
-                QPixmap.fromImage(overlay_image),
-                title=tr("brightfield_measurement_overlay"),
-                body=str(active_image.get("source_name", "")),
-                roi_rect=roi_rect,
-                enable_roi_selection=roi_selection_enabled,
-                is_overlay=True,
-            )
+            if cached_overlay:
+                canvas._overlay_title = tr("brightfield_measurement_overlay")
+                canvas._overlay_body = str(active_image.get("source_name", ""))
+                canvas.set_roi_selection_enabled(roi_selection_enabled)
+                canvas.show_overlay_preview()
+            else:
+                overlay = panel.render_measurement_overlay(image_uid=image_uid, measurement_uuid=measurement_uuid)
+                overlay_image = QImage(
+                    overlay.data,
+                    overlay.shape[1],
+                    overlay.shape[0],
+                    overlay.strides[0],
+                    QImage.Format.Format_RGB888,
+                ).copy()
+                canvas.set_display_state(
+                    QPixmap.fromImage(overlay_image),
+                    title=tr("brightfield_measurement_overlay"),
+                    body=str(active_image.get("source_name", "")),
+                    roi_rect=roi_rect,
+                    enable_roi_selection=roi_selection_enabled,
+                    is_overlay=True,
+                )
+                canvas._measurement_overlay_cache_key = overlay_cache_key
             self.status_label.setText(trf("brightfield_analyzed", name=active_image.get("source_name", "")))
             overlay_applied = True
         elif cell_measurement is not None and getattr(self.data_panel, "brightfield_measure_type_combo", None) is not None and self.data_panel.brightfield_measure_type_combo.currentData() == "cells":
@@ -4774,9 +4714,8 @@ class MainWindow(QMainWindow):
         self.data_panel.brightfield_batch_threshold_status_label.setText(
             self._format_brightfield_batch_threshold_status(panel, target_measurement)
         )
-        self.data_panel.set_brightfield_foolproof_sensitivity_enabled(batch_state.get("batch_threshold") is None)
-        self.data_panel.set_brightfield_assisted_sensitivity_enabled(batch_state.get("batch_threshold") is None)
-        self.data_panel.set_brightfield_assisted_small_region_filter_enabled(True)
+        locked = bool(batch_state.get("locked")) and batch_state.get("batch_threshold") is not None
+        self.data_panel.brightfield_detection_sensitivity_combo.setEnabled(not locked)
         self.data_panel.set_brightfield_batch_threshold_action_state(
             can_lock=is_compatible,
             can_unlock=batch_state.get("batch_threshold") is not None,
@@ -5121,24 +5060,11 @@ class MainWindow(QMainWindow):
             return
         self._cancel_brightfield_guided_preview_debounce(reset_label=False)
         try:
-            mode = self._normalized_brightfield_mode(self.data_panel.current_brightfield_guided_mode())
-            stain_type = normalize_brightfield_stain_type(
-                self.data_panel.brightfield_stain_type_combo.currentText() or "H&E"
+            preview_payload = panel.build_guided_preview(
+                stain_type=self.data_panel.brightfield_stain_type_combo.currentText(),
+                settings=self.data_panel.brightfield_area_analysis_settings(),
             )
-            if mode == "expert":
-                self._refresh_brightfield_preview(panel, preview_settings=self.data_panel.brightfield_analysis_settings())
-            else:
-                preview_settings = (
-                    self.data_panel.brightfield_foolproof_analysis_settings()
-                    if mode == "foolproof" and stain_type == "H&E"
-                    else self.data_panel.brightfield_guided_analysis_settings()
-                )
-                preview_payload = panel.build_guided_preview(
-                    guided_mode=mode,
-                    stain_type=stain_type,
-                    settings=preview_settings,
-                )
-                self._refresh_brightfield_preview(panel, preview_payload=preview_payload)
+            self._refresh_brightfield_preview(panel, preview_payload=preview_payload)
             self.data_panel.brightfield_preview_status_label.setText(tr("brightfield_mask_preview_status"))
         except Exception as exc:
             log_path = log_exception("Brightfield segmentation preview failed", exc)
@@ -5753,14 +5679,19 @@ class MainWindow(QMainWindow):
             return
         panel = self._active_wb_panel()
         strip_index = self._selected_wb_strip_index(panel)
-        if self._editing_band_strips(panel) and strip_index is not None:
-            x, y, width, height = self.wb_canvas.scene_roi_to_strip_roi(rect, strip_index)
+        if strip_index is not None and (self._editing_band_strips(panel) or self.wb_canvas._strip_display_rects):
+            roi = self.wb_canvas.scene_roi_to_strip_roi(rect, strip_index)
+            if roi is None:
+                return
             source_size = QImage(str(panel.data["band_strips"][strip_index].get("image_path", ""))).size()
             source_width, source_height = source_size.width(), source_size.height()
         else:
-            x, y, width, height = self.wb_canvas.scene_roi_to_source_roi(rect)
+            roi = self.wb_canvas.scene_roi_to_source_roi(rect)
+            if roi is None:
+                return
             image_data = panel.data.get("image_data", {})
             source_width, source_height = int(image_data.get("width_px", 1)), int(image_data.get("height_px", 1))
+        x, y, width, height = roi
         for spin in [self.data_panel.wb_x_spin, self.data_panel.wb_y_spin, self.data_panel.wb_w_spin, self.data_panel.wb_h_spin]:
             spin.blockSignals(True)
         # A restored/previous image's spin ranges must not clamp the first drag.
@@ -7878,25 +7809,16 @@ class MainWindow(QMainWindow):
         if not has_original and not has_overlay:
             QMessageBox.information(self, tr("export_image_title"), tr("export_image_source_prompt"))
             return None
-        box = QMessageBox(self)
-        box.setWindowTitle(tr("export_image_title"))
-        box.setText(tr("export_image_source_prompt"))
-        original_btn = box.addButton(tr("original"), QMessageBox.ButtonRole.AcceptRole)
-        overlay_btn = box.addButton(tr("v9_overlay"), QMessageBox.ButtonRole.AcceptRole)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        original_btn.setEnabled(bool(has_original))
-        overlay_btn.setEnabled(bool(has_overlay))
-        if default_overlay and has_overlay:
-            box.setDefaultButton(overlay_btn)
-        elif has_original:
-            box.setDefaultButton(original_btn)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is original_btn and has_original:
-            return "original"
-        if clicked is overlay_btn and has_overlay:
-            return "overlay"
-        return None
+        from ui.panels.fluorescence_image_export import FluorescenceImageExportDialog
+        dialog = FluorescenceImageExportDialog(self, has_original=has_original, has_overlay=has_overlay,
+                                               default_overlay=default_overlay, allow_separate_channels=False)
+        for widget in (dialog.composition_prompt, dialog.merge_radio, dialog.channels_radio, dialog.both_radio):
+            widget.hide()
+        dialog.display_hint.setText(tr('histology_export_hint'))
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        source, _ = dialog.exec_choice()
+        return {'original': 'adjusted', 'unadjusted': 'original', 'overlay': 'overlay'}[source]
 
     def export_brightfield_image(self) -> None:
         panel = self._active_brightfield_panel()
@@ -7919,7 +7841,7 @@ class MainWindow(QMainWindow):
             if source == "overlay":
                 target = self.export_brightfield_overlay_image_to_path(path)
             else:
-                target = self.export_brightfield_original_image_to_path(path)
+                target = self.export_brightfield_original_image_to_path(path, adjusted=source == 'adjusted')
         except (ValueError, OSError) as exc:
             QMessageBox.information(self, tr("v9_module_brightfield"), str(exc))
             return
@@ -7929,7 +7851,7 @@ class MainWindow(QMainWindow):
     def export_brightfield_overlay_image(self) -> None:
         self.export_brightfield_image()
 
-    def export_brightfield_original_image_to_path(self, path: str | Path) -> Path:
+    def export_brightfield_original_image_to_path(self, path: str | Path, *, adjusted: bool = False) -> Path:
         from ui.panels.brightfield_workspace import apply_brightfield_native_export_scale
 
         panel = self._active_brightfield_panel()
@@ -7937,7 +7859,7 @@ class MainWindow(QMainWindow):
         if active is None:
             raise ValueError("Import a Brightfield image before exporting.")
         image_uid = str(active.get("uid", "")).strip()
-        image = panel.source_qimage(image_uid)
+        image = panel.display_qimage(image_uid) if adjusted else panel.source_qimage(image_uid)
         image = apply_brightfield_native_export_scale(
             image,
             panel,
