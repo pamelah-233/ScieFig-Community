@@ -105,14 +105,20 @@ def main() -> int:
         splash=None
         sys.excepthook = previous_excepthook
         if isinstance(app, QApplication):
+            import gc
             from PyQt6 import sip
-            from PyQt6.QtCore import QThreadPool
+            from PyQt6.QtCore import QCoreApplication, QEvent, QThreadPool
             # Analysis and recovery jobs can still be unwinding after the window closes.
             QThreadPool.globalInstance().waitForDone()
             app.project_window = None
             if window is not None and not sip.isdeleted(window):
                 sip.delete(window)
+            window = None
             app.processEvents()
+            # Chart canvases and other Qt wrappers must be collected while Qt is live.
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            gc.collect()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             sip.delete(app)
 
 
