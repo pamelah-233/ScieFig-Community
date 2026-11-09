@@ -7,6 +7,15 @@ Scientific data and image analysis, plotting and figure assembly.
 
 ### Windows 1.2.4
 
+> [!IMPORTANT]
+> **Windows 11 智能应用控制 / Smart App Control**
+>
+> 如果 ScieFig 启动失败、CPU/GPU 显示无连接或分析功能异常，并且 Windows 提示智能应用控制已阻止程序或组件，请暂时关闭智能应用控制，然后重启 ScieFig。入口是 **Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置 → 关闭**。
+>
+> If ScieFig fails to start, shows CPU/GPU as disconnected, or has analysis errors and Windows reports a Smart App Control block, temporarily turn off Smart App Control and restart ScieFig. Go to **Windows Security → App & browser control → Smart App Control settings → Off**.
+>
+> 此设置对整台电脑生效。 / This setting applies to the whole PC.
+
 | 安装包 / Installer | 下载 / Download |
 | --- | --- |
 | 完整离线包，包含 CPU / NVIDIA GPU 运行库 / Full offline package | [Windows 完整安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_Setup.exe) |
