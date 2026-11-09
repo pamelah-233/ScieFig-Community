@@ -5,10 +5,7 @@ from typing import Any
 from core.utils.hashing import sha256_json
 
 BRIGHTFIELD_GUIDED_MAPPING_VERSION = "v7.2-b2a"
-BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION = "v7.2-b2b-foolproof-sensitivity-1"
-BRIGHTFIELD_ASSISTED_SENSITIVITY_MAPPING_VERSION = "v7.2-b2c-assisted-sensitivity-1"
-BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION = "v7.2-b2c2-assisted-sensitivity-min-area-1"
-BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION = "v7.2-b2c2-assisted-min-area-filtering-1"
+BRIGHTFIELD_AUTO_MAPPING_VERSION = "v7.2-auto-sensitivity-min-area-1"
 BRIGHTFIELD_GUIDED_PREVIEW_STATUS = "not_previewed_b2b"
 BRIGHTFIELD_GUIDED_PREVIEW_MATCH_STATUS = "preview_hash_matched_b2b"
 BRIGHTFIELD_GUIDED_PREVIEW_STALE_STATUS = "preview_hash_mismatch_b2b"
@@ -17,12 +14,7 @@ BRIGHTFIELD_PREVIEW_DEBOUNCE_MS = 300
 BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_MIN = -2
 BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_MAX = 2
 BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_STEP_RATIO = 0.05
-BRIGHTFIELD_FOOLPROOF_THRESHOLD_BIAS_MIN = BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_MIN
-BRIGHTFIELD_FOOLPROOF_THRESHOLD_BIAS_MAX = BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_MAX
-BRIGHTFIELD_FOOLPROOF_THRESHOLD_BIAS_STEP_RATIO = BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_STEP_RATIO
-BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_BIAS_MIN = -2
-BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_BIAS_MAX = 2
-BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_STEP_RATIO = 0.25
+BRIGHTFIELD_SMALL_REGION_FILTER_STEP_RATIO = 0.25
 
 
 def neutral_brightfield_guided_slider_values() -> dict[str, float]:
@@ -53,25 +45,6 @@ def normalize_brightfield_guided_threshold_bias(value: Any) -> int:
     return max(BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_MIN, min(BRIGHTFIELD_GUIDED_THRESHOLD_BIAS_MAX, bias))
 
 
-def normalize_brightfield_foolproof_threshold_bias(value: Any) -> int:
-    return normalize_brightfield_guided_threshold_bias(value)
-
-
-def normalize_brightfield_assisted_threshold_bias(value: Any) -> int:
-    return normalize_brightfield_guided_threshold_bias(value)
-
-
-def normalize_brightfield_assisted_small_region_filter_bias(value: Any) -> int:
-    try:
-        bias = int(round(float(value)))
-    except (TypeError, ValueError):
-        return 0
-    return max(
-        BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_BIAS_MIN,
-        min(BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_BIAS_MAX, bias),
-    )
-
-
 def apply_brightfield_guided_threshold_bias(
     baseline_a_min: Any,
     threshold_bias: Any,
@@ -88,27 +61,13 @@ def apply_brightfield_guided_threshold_bias(
     }
 
 
-def apply_brightfield_foolproof_threshold_bias(
-    baseline_a_min: Any,
-    threshold_bias: Any,
-) -> dict[str, float | int]:
-    return apply_brightfield_guided_threshold_bias(baseline_a_min, threshold_bias)
-
-
-def apply_brightfield_assisted_threshold_bias(
-    baseline_a_min: Any,
-    threshold_bias: Any,
-) -> dict[str, float | int]:
-    return apply_brightfield_guided_threshold_bias(baseline_a_min, threshold_bias)
-
-
-def apply_brightfield_assisted_small_region_filter_bias(
+def apply_brightfield_small_region_filter_bias(
     baseline_min_area_px: Any,
     small_region_filter_bias: Any,
 ) -> dict[str, float | int]:
-    normalized_bias = normalize_brightfield_assisted_small_region_filter_bias(small_region_filter_bias)
+    normalized_bias = normalize_brightfield_guided_threshold_bias(small_region_filter_bias)
     baseline_value = max(0, int(round(float(baseline_min_area_px))))
-    min_area_scale_factor = 1.0 + (BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_STEP_RATIO * float(normalized_bias))
+    min_area_scale_factor = 1.0 + (BRIGHTFIELD_SMALL_REGION_FILTER_STEP_RATIO * float(normalized_bias))
     if baseline_value <= 0:
         effective_min_area_px = 0
     else:
@@ -136,34 +95,7 @@ def build_brightfield_guided_threshold_slider_values(
     }
 
 
-def build_brightfield_foolproof_slider_values(
-    *,
-    threshold_bias: Any,
-    active: bool,
-    inactive_reason: Any = None,
-) -> dict[str, Any]:
-    return build_brightfield_guided_threshold_slider_values(
-        threshold_bias=threshold_bias,
-        active=active,
-        inactive_reason=inactive_reason,
-    )
-
-
-def build_brightfield_assisted_slider_values(
-    *,
-    threshold_bias: Any,
-    active: bool,
-    inactive_reason: Any = None,
-) -> dict[str, Any]:
-    slider_values = build_brightfield_guided_threshold_slider_values(
-        threshold_bias=threshold_bias,
-        active=active,
-        inactive_reason=inactive_reason,
-    )
-    return slider_values
-
-
-def build_brightfield_assisted_postprocess_slider_values(
+def build_brightfield_auto_slider_values(
     *,
     threshold_bias: Any,
     active: bool,
@@ -172,17 +104,16 @@ def build_brightfield_assisted_postprocess_slider_values(
     baseline_min_area_px: Any = 0,
     effective_min_area_px: Any = 0,
 ) -> dict[str, Any]:
-    slider_values = build_brightfield_assisted_slider_values(
+    slider_values = build_brightfield_guided_threshold_slider_values(
         threshold_bias=threshold_bias,
         active=active,
         inactive_reason=inactive_reason,
     )
     slider_values.update(
         {
-            "small_region_filter_bias": normalize_brightfield_assisted_small_region_filter_bias(
+            "small_region_filter_bias": normalize_brightfield_guided_threshold_bias(
                 small_region_filter_bias
             ),
-            "small_region_filter_mapping_version": BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION,
             "small_region_filter_baseline_min_area_px": max(0, int(round(float(baseline_min_area_px)))),
             "small_region_filter_effective_min_area_px": max(0, int(round(float(effective_min_area_px)))),
         }

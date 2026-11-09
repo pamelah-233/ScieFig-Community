@@ -136,44 +136,14 @@ def test_getter_setter_roundtrip_zero_false_and_he_cellpose(monkeypatch):
     monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
     try:
         panel = window.data_panel
-        panel.set_ihc_analysis_settings(
+        panel.set_brightfield_he_fiber_analysis_settings(
             {
-                "positive_threshold": 0.0,
-                "weak_threshold": 0.0,
-                "moderate_threshold": 0.0,
-                "strong_threshold": 0.0,
-                "min_tissue_area_px": 0,
-                "tissue_mask_enabled": False,
-            }
-        )
-        ihc = panel.ihc_analysis_settings()
-        assert ihc["positive_threshold"] == 0.0
-        assert ihc["tissue_mask_enabled"] is False
-        assert ihc["min_tissue_area_px"] == 0
-        panel.set_ihc_guided_analysis_settings(
-            {"sensitivity": "low", "cleanup_level": "high", "tissue_background_correction": False}
-        )
-        guided = panel.ihc_guided_analysis_settings()
-        assert guided["sensitivity"] == "low"
-        assert guided["tissue_background_correction"] is False
-
-        panel.set_brightfield_analysis_settings(
-            {
-                "segmentation_mode": "grayscale",
-                "h_min": 0.0,
-                "gray_threshold": 0.0,
-                "gray_invert": False,
-                "fill_holes": False,
-                "cleanup_min_area_px": 0,
                 "he_fiber_segmentation_method": "anti_oversegmentation",
                 "he_fiber_splitting_sensitivity": 0,
                 "he_fiber_foreground_sensitivity": 35,
             }
         )
-        bf = panel.brightfield_analysis_settings()
-        assert bf["gray_invert"] is False
-        assert bf["fill_holes"] is False
-        assert bf["gray_threshold"] == 0.0
+        bf = panel.brightfield_he_fiber_analysis_settings()
         assert bf["he_fiber_segmentation_method"] == "anti_oversegmentation"
         assert bf["he_fiber_splitting_sensitivity"] == 0
 
@@ -229,45 +199,26 @@ def test_apply_preset_changes_widgets_not_measurements_or_run(tmp_path, monkeypa
     monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
     monkeypatch.setattr(window, "_refresh_ihc_preview", lambda *args, **kwargs: None)
     runs = []
-    monkeypatch.setattr(window, "run_ihc_analysis", lambda *args, **kwargs: runs.append(True))
+    monkeypatch.setattr(window, "run_brightfield_analysis", lambda *args, **kwargs: runs.append(True))
     library = AnalysisPresets(QSettings(str(tmp_path / "prefs.ini"), QSettings.Format.IniFormat))
     try:
-        window.set_module("ihc")
-        panel = window._active_ihc_panel()
-        panel.data["ihc_images"] = [
-            {"uid": "image-1", "source_name": "a.png", "measurements": [], "roi": {"mode": "whole_image", "items": []}}
-        ]
-        panel.data["active_image_uid"] = "image-1"
-        record = {
-            "measurement_uuid": "keep-me",
-            "image_uid": "image-1",
-            "results": {"positive_area_percent": 12},
-        }
-        panel.analysis["ihc_measurements"] = [record]
-        snapshot = deepcopy(panel.analysis["ihc_measurements"])
-        window.data_panel.set_ihc_guided_mode("expert")
-        window.data_panel.set_ihc_analysis_settings(
-            {"positive_threshold": 0.4, "weak_threshold": 0.4, "moderate_threshold": 0.5, "strong_threshold": 0.8, "min_tissue_area_px": 100, "tissue_mask_enabled": False}
-        )
-        preset = library.save(
-            "zero expert",
-            "ihc",
-            "measure_dab_positive_area",
-            {"positive_threshold": 0.0, "weak_threshold": 0.0, "tissue_mask_enabled": False, "min_tissue_area_px": 0},
-        )
+        window.set_module("brightfield")
+        panel = window._active_brightfield_panel()
+        window.measurement_tasks["brightfield"].select("area")
+        window.data_panel.set_brightfield_area_analysis_settings({"threshold_bias": 2, "small_region_filter_bias": -1})
+        snapshot = deepcopy(panel.analysis)
+        preset = library.save("H&E area", "brightfield", "auto_analyze_he", {
+            "threshold_bias": 0, "small_region_filter_bias": 2,
+        })
         window.analysis_state.apply_preset(preset)
-        settings = window.data_panel.ihc_analysis_settings()
-        assert settings["positive_threshold"] == 0.0
-        assert settings["tissue_mask_enabled"] is False
-        assert panel.analysis["ihc_measurements"] == snapshot
-        assert panel.analysis["ihc_measurements"][0]["measurement_uuid"] == "keep-me"
-        assert panel.analysis["ihc_measurements"][0]["results"] == {"positive_area_percent": 12}
+        assert window.data_panel.brightfield_area_analysis_settings() == {
+            "threshold_bias": 0, "small_region_filter_bias": 2,
+        }
+        assert panel.analysis == snapshot
         assert runs == []
         incompatible = library.save("cells", "brightfield", "measure_bright_round_cells", {"backend": "traditional"})
         with pytest.raises(ValueError):
             window.analysis_state.apply_preset(incompatible)
-        assert panel.analysis["ihc_measurements"] == snapshot
-        assert runs == []
     finally:
         _close_window(app, window)
 
@@ -279,7 +230,6 @@ def test_compact_preset_bar_exists_on_actual_groups():
     window = MainWindow(resources_dir=ROOT / "resources")
     try:
         for module, host in (
-            ("ihc", window.data_panel.ihc_measure_actions_group),
             ("brightfield", window.data_panel.brightfield_measure_group),
             ("fluorescence", window.fluoro_workspace.measure_params_stack.parentWidget()),
         ):
@@ -290,6 +240,5 @@ def test_compact_preset_bar_exists_on_actual_groups():
             assert bar.save_button.text()
             assert bar.manage_button is not None
         window.set_module("ihc")
-        assert window.analysis_state.bars["ihc"].isVisible() or True
     finally:
         _close_window(app, window)

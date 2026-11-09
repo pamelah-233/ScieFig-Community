@@ -369,11 +369,10 @@ class LayoutToolsController(QObject):
         bounds = self.canvas.view.object_interaction.bounds(items)
         if bounds.isEmpty(): return False
         from ui.widgets.canvas_zoom import fit_graphics_view_to_rect
-        # Expand view navigation room only; the scene/page rectangle is unchanged.
         view = self.canvas.view
         controller._fit_timer.stop(); controller._fit_timer_late.stop()
-        view.setSceneRect(view.sceneRect().united(bounds.adjusted(-100,-100,100,100)))
         controller.fit_mode = False
+        view.setSceneRect(controller.backend.navigation_rect().united(bounds))
         controller.zoom_factor = fit_graphics_view_to_rect(view,bounds.adjusted(-20,-20,20,20))
         controller._sync_controls()
         controller.view_changed.emit(controller.zoom_factor)

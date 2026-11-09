@@ -1,9 +1,11 @@
 """Display-only region picking; deliberately separate from analytical black balance."""
 from copy import deepcopy
 
+import numpy as np
 from PyQt6.QtCore import Qt
 
 from core.plotting.fluoro_display import display_settings, sample_display_point
+from core.plotting.fluoro_render import RGB_COMPOSITE_MODE, rgb_display_channel, rgb_interpretation_mode
 from core.utils.commands import SnapshotCommand
 from core.utils.i18n import tr
 
@@ -65,7 +67,14 @@ class FluoroDisplayBalanceController:
             if geometry.get('source_channel_index', index) != index:
                 raise ValueError('Pick the target channel, not another split image')
             data = panel.image_data(uid)
-            settings = sample_display_point(data[index], geometry, image['channels'][index], point)
+            if rgb_interpretation_mode(image) == RGB_COMPOSITE_MODE:
+                plane = np.max(data[:3], axis=0)
+                if data.shape[0] == 4:
+                    plane = np.where(data[3] > 0, plane, np.nan)
+                channel = rgb_display_channel(data, image)
+            else:
+                plane, channel = data[index], image['channels'][index]
+            settings = sample_display_point(plane, geometry, channel, point)
         except (ValueError, TypeError, IndexError):
             if control is not None:
                 control.hint.setText(tr('fluoro_display_pick_invalid'))
@@ -80,8 +89,10 @@ class FluoroDisplayBalanceController:
         image = ws._active_image()
         if not image or ws.lock_display_checkbox.isChecked():
             return
+        rgb_composite = rgb_interpretation_mode(image) == RGB_COMPOSITE_MODE
+        channel = (image.get('rgb_display') or {}) if rgb_composite else image['channels'][index]
         before = {'uid': str(image['uid']), 'index': index,
-                  'settings': deepcopy(image['channels'][index].get('display_processing'))}
+                  'rgb_composite': rgb_composite, 'settings': deepcopy(channel.get('display_processing'))}
         after = {**before, 'settings': display_settings(settings)}
         if before == after:
             return
@@ -96,10 +107,14 @@ class FluoroDisplayBalanceController:
         image = next((i for i in ws.panel.images() if str(i['uid']) == state['uid']), None)
         if image is None:
             return
-        ws.panel.update_channel(state['uid'], state['index'], display_processing=state['settings'])
-        if state['settings'] is None:
-            image['channels'][state['index']].pop('display_processing', None)
-        if ws._active_image() is image:
+        rgb_composite = rgb_interpretation_mode(image) == RGB_COMPOSITE_MODE
+        if state['rgb_composite']:
+            ws.panel.update_rgb_display(state['uid'], display_processing=state['settings'])
+        elif not rgb_composite and 0 <= state['index'] < len(image.get('channels', [])):
+            ws.panel.update_channel(state['uid'], state['index'], display_processing=state['settings'])
+            if state['settings'] is None:
+                image['channels'][state['index']].pop('display_processing', None)
+        if ws._active_image() is image and state['rgb_composite'] == rgb_composite:
             control = self._controls(state['index'])
             if control is not None:
                 control.set_settings(state['settings'])

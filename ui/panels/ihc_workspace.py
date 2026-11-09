@@ -145,7 +145,7 @@ class IHCPreviewCanvas(PreviewCanvas):
             self.title.setText(title)
         if body:
             self.body.setText(body)
-        self._refresh_image_display()
+        self._apply_paper_zoom()
         self.preview_mode_changed.emit(self._preview_mode, self.has_overlay_pixmap())
 
     def set_roi_selection_enabled(self, enabled: bool) -> None:

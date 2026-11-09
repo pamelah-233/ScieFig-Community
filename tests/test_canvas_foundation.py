@@ -151,7 +151,8 @@ def test_ctrl_wheel_keeps_cursor_scene_point():
     canvas = _show(WBCanvas(), 480, 360)
     _large_scene(canvas)
     canvas.fit_to_canvas()
-    canvas.zoom_by(ZOOM_STEP)
+    canvas.zoom_by(5)
+    QTest.qWait(40)
     point = QPoint(90, 70)
     before = canvas.view.mapToScene(point)
     before_zoom = float(canvas._zoom_factor)
@@ -306,7 +307,7 @@ def test_space_while_editing_inserts_text_and_is_not_canvas_pan():
     canvas.close()
 
 
-def test_space_pan_at_fit_leaves_manual_mode_after_resize():
+def test_space_pan_keeps_fit_until_manual_zoom():
     canvas = _show(WBCanvas(), 400, 300)
     canvas.scene.addRect(QRectF(0, 0, 40, 30))
     canvas.scene.setSceneRect(QRectF(0, 0, 40, 30))
@@ -320,7 +321,10 @@ def test_space_pan_at_fit_leaves_manual_mode_after_resize():
     QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=QPoint(48, 36))
     QTest.keyRelease(canvas.view, Qt.Key.Key_Space)
     _APP.processEvents()
-    assert not canvas._fit_mode
+    assert canvas._fit_mode
+    assert canvas.view.horizontalScrollBar().maximum() == canvas.view.horizontalScrollBar().minimum()
+    assert canvas.view.verticalScrollBar().maximum() == canvas.view.verticalScrollBar().minimum()
+    canvas.zoom_by(2)
     zoom = float(canvas._zoom_factor)
     canvas.resize(520, 380)
     _APP.processEvents()

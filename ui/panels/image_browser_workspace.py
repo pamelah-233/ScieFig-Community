@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.image_browser import ScaleBarState
+from core.utils.image_formats import WB_IMAGE_SUFFIXES
 from core.utils.i18n import bind_i18n, retranslate_bound_widgets, tr
 from core.utils.recent_directory import recent_directory, remember_directory
 from ui.export_menu import apply_native_png_suffix
@@ -115,6 +116,7 @@ class ImageBrowserWorkspace(QWidget):
     send_to_fluorescence_requested = pyqtSignal(list)
     send_to_fluorescence_transfer_requested = pyqtSignal(list)
     send_to_histology_transfer_requested = pyqtSignal(str, list)
+    send_to_wb_requested = pyqtSignal(list)
     browser_state_changed = pyqtSignal()
 
     def __init__(
@@ -364,6 +366,13 @@ class ImageBrowserWorkspace(QWidget):
             button.clicked.connect(lambda checked=False, name=destination: self.send_selected_to_histology(name))
             setattr(self, 'send_to_'+destination+'_button', button)
             layout.addWidget(button)
+
+        self.send_to_wb_button = bind_i18n(QPushButton(), 'viewer_send_to_wb')
+        self.send_to_wb_button.setObjectName('ImageBrowserSendToWBButton')
+        bind_i18n(self.send_to_wb_button, 'viewer_send_to_wb_hint', 'toolTip')
+        self.send_to_wb_button.setEnabled(False)
+        self.send_to_wb_button.clicked.connect(self.send_selected_to_wb)
+        layout.addWidget(self.send_to_wb_button)
 
         self.export_button = bind_i18n(QPushButton(), "viewer_export_png")
         self.export_button.setObjectName("ImageBrowserExportButton")
@@ -832,6 +841,10 @@ class ImageBrowserWorkspace(QWidget):
         self.send_to_fluorescence_button.setEnabled(enabled)
         for name in ('ihc', 'brightfield'):
             getattr(self, 'send_to_'+name+'_button').setEnabled(enabled)
+        self.send_to_wb_button.setEnabled(enabled and all(
+            Path(item.data(Qt.ItemDataRole.UserRole) or '').suffix.lower() in WB_IMAGE_SUFFIXES
+            for item in self.thumbnail_list.selectedItems()
+        ))
 
     def serialize_browser_scale_states(self) -> dict[str, Any]:
         images: dict[str, Any] = {}
@@ -980,6 +993,12 @@ class ImageBrowserWorkspace(QWidget):
                  if item.data(Qt.ItemDataRole.UserRole)]
         if paths:
             self.send_to_histology_transfer_requested.emit(destination, [self._browser_transfer_payload(p) for p in paths])
+
+    def send_selected_to_wb(self) -> None:
+        self._update_candidate_button()
+        if self.send_to_wb_button.isEnabled():
+            paths = [str(item.data(Qt.ItemDataRole.UserRole)) for item in self.thumbnail_list.selectedItems()]
+            self.send_to_wb_requested.emit(paths)
 
     def send_selected_to_fluorescence(self) -> None:
         if self._candidate_transfer_busy:

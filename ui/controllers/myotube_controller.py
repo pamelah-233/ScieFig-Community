@@ -9,6 +9,7 @@ from PyQt6.QtCore import QObject,QEvent,pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QDialog,QFileDialog
 from core.image_browser import rgb_to_qimage
+from core.plotting.histology_processing import histology_input_context
 from core.utils.i18n import tr
 from ui.widgets.myotube_controls import MyotubeControls
 
@@ -109,6 +110,7 @@ class MyotubeController(QObject):
         panel=self.panel();record=panel.active_image() or {};uid=record.get('uid')
         return deepcopy(dict(panel=id(panel),uid=uid,parameters=self.controls.parameters(),
             segmentation_input=panel.segmentation_input_context(uid) if self.module=='fluoro' and uid else None,
+            histology_input=histology_input_context(record) if self.module=='brightfield' else None,
             channel=self.controls.channel.currentData() if self.module=='fluoro' else None,
             scope=self.controls.roi.currentData(),roi=record.get('rois' if self.module=='fluoro' else 'roi'),
             calibration=panel.measurement_scale_bar(uid) if uid else {},interpretation=record.get('channel_interpretation')))
@@ -149,6 +151,7 @@ class MyotubeController(QObject):
             result.update(measurement_uuid=str(uuid4()),image_uid=record['uid'],image_name=record.get('source_name',''),
                 channel_index=inputs['channel'],roi=roi,params=deepcopy(result['settings']))
             if self.module=='fluoro':result['segmentation_input']=deepcopy(inputs['segmentation_input'])
+            else:result['input_processing']=deepcopy(inputs['histology_input'])
             return result
         def accept(result):
             panel.analysis.setdefault('myotube_measurements',[]).append(result)

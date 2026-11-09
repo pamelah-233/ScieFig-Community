@@ -882,12 +882,7 @@ def _apply_snapshot(live_panel: Any, result_panel: Any) -> None:
 def _ihc_controller(panel_ref: list[IHCPanel], service: AnalysisJobService, applied: list[Any], errors: list[Exception], notices: list[str]):
     return IHCAnalysisController(
         get_panel=lambda: panel_ref[0],
-        get_expert_settings=lambda: {},
-        get_assisted_settings=lambda: {},
-        get_foolproof_settings=lambda: {},
-        get_current_mode=lambda: "foolproof",
         get_overlay_opacity=lambda: 0.35,
-        get_current_task_type=lambda: "ihc_dab",
         get_examples_for_image=lambda _uid: [],
         clear_examples_for_image=lambda _uid: None,
         clear_example_click_mode=lambda: None,
@@ -917,11 +912,8 @@ def _brightfield_controller(
     return BrightfieldTraditionalAnalysisController(
         get_panel=lambda: panel_ref[0],
         cancel_preview_debounce=lambda: None,
-        get_current_mode=lambda: "foolproof",
         get_current_stain_type=lambda: "H&E",
-        get_expert_settings=lambda: {},
-        get_assisted_settings=lambda: {},
-        get_foolproof_settings=lambda: {},
+        get_settings=lambda: {},
         refresh_measurement_views=refresh,
         notify_user=lambda _title, message: notices.append(message),
         report_failure=lambda _title, _context, exc: errors.append(exc),
@@ -1424,7 +1416,7 @@ def test_async_brightfield_matches_existing_synchronous_numeric_results(tmp_path
     async_panel = BrightfieldPanel(panel_id="async")
     sync_panel.import_image(str(image_path), stain_type="H&E")
     async_panel.import_image(str(image_path), stain_type="H&E")
-    sync_result = sync_panel.auto_analyze_he(settings={}, guided_mode="foolproof")
+    sync_result = sync_panel.auto_analyze_he(settings={})
 
     service = AnalysisJobService()
     panel_ref = [async_panel]

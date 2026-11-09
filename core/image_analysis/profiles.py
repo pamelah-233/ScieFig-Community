@@ -173,9 +173,6 @@ DAB_IHC_PROFILE = TaskProfile(
     ],
     advanced_controls=[
         "positive_threshold",
-        "weak_threshold",
-        "moderate_threshold",
-        "strong_threshold",
         "tissue_mask_thresholds",
         "min_tissue_area_px",
     ],

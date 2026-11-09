@@ -1,6 +1,6 @@
 """Shared screen-only canvas framing; exported document geometry stays separate."""
 import sys
-from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QPainter, QPen
 
 OUTER_MARGIN = 8
@@ -21,6 +21,8 @@ def configure_canvas_layout(layout):
 
 
 def configure_canvas_viewport(widget):
+    widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     widget.setStyleSheet(f"""
         QGraphicsView, QScrollArea#CanvasScrollArea {{
             background: {SURROUND_COLOR};

@@ -7,7 +7,7 @@ from core.utils.analysis_presets import AnalysisPresets, sanitize_settings
 from ui.widgets.analysis_preset_bar import AnalysisPresetBar
 
 UI_STATE_KEY = "analysis_ui_state_by_image"
-WINDOW_TO_PRESET_MODULE = {"ihc": "ihc", "brightfield": "brightfield", "fluoro": "fluorescence"}
+WINDOW_TO_PRESET_MODULE = {"brightfield": "brightfield", "fluoro": "fluorescence"}
 PRESET_TO_WINDOW = {value: key for key, value in WINDOW_TO_PRESET_MODULE.items()}
 
 
@@ -25,13 +25,6 @@ class AnalysisStateController:
 
     def _install_bars(self):
         window = self.window
-        ihc_bar = AnalysisPresetBar(
-            "ihc",
-            library=self.library,
-            on_apply=self.apply_preset,
-            on_save=lambda name: self.save_current(name, "ihc"),
-        )
-        window.data_panel.ihc_measure_actions_group.layout().insertWidget(0, ihc_bar)
         bf_bar = AnalysisPresetBar(
             "brightfield",
             library=self.library,
@@ -48,7 +41,7 @@ class AnalysisStateController:
         page = window.fluoro_workspace.measure_params_stack.parentWidget()
         page.layout().insertWidget(1, fluoro_bar)
         window.fluoro_workspace._analysis_state = self
-        self.bars = {"ihc": ihc_bar, "brightfield": bf_bar, "fluorescence": fluoro_bar}
+        self.bars = {"brightfield": bf_bar, "fluorescence": fluoro_bar}
 
     def retranslate(self):
         for bar in self.bars.values():
@@ -68,8 +61,6 @@ class AnalysisStateController:
 
     def panel_for(self, preset_module: str):
         window = self.window
-        if preset_module == "ihc":
-            return window._active_ihc_panel()
         if preset_module == "brightfield":
             return window._active_brightfield_panel()
         if preset_module == "fluorescence":
@@ -80,8 +71,6 @@ class AnalysisStateController:
         module = preset_module or self.current_preset_module()
         controls = self.window.data_panel
         fluoro = self.window.fluoro_workspace
-        if module == "ihc":
-            return "measure_dab_positive_area" if controls.current_ihc_guided_mode() == "expert" else "auto_analyze_dab"
         if module == "fluorescence":
             return {
                 "spot_count": "count_channel_objects",
@@ -95,10 +84,7 @@ class AnalysisStateController:
             return "measure_bright_round_cells"
         if kind == "fiber":
             return "create_ai_object_count_measurement"
-        mode = controls.current_brightfield_guided_mode()
         stain = str(controls.brightfield_stain_type_combo.currentText() or "H&E")
-        if mode == "expert":
-            return "create_measurement"
         if stain != "H&E":
             return "create_profile_preset_measurement"
         return "auto_analyze_he"
@@ -107,16 +93,6 @@ class AnalysisStateController:
         module = preset_module or self.current_preset_module()
         controls = self.window.data_panel
         fluoro = self.window.fluoro_workspace
-        if module == "ihc":
-            mode = controls.current_ihc_guided_mode()
-            if mode == "expert":
-                payload = dict(controls.ihc_analysis_settings())
-            elif mode == "assisted":
-                payload = dict(controls.ihc_guided_analysis_settings())
-            else:
-                payload = dict(controls.ihc_foolproof_analysis_settings())
-            payload["guided_mode"] = mode
-            return sanitize_settings(payload)
         if module == "fluorescence":
             mode = getattr(fluoro, "measure_mode", "")
             if mode == "spot_count":
@@ -132,39 +108,19 @@ class AnalysisStateController:
         if kind == "cells":
             return sanitize_settings(controls.bright_round_cell_analysis_settings())
         if kind == "fiber":
-            return sanitize_settings(controls.brightfield_analysis_settings())
-        mode = controls.current_brightfield_guided_mode()
-        if mode == "expert":
-            payload = dict(controls.brightfield_analysis_settings())
-        elif mode == "assisted":
-            payload = dict(controls.brightfield_guided_analysis_settings())
-        else:
-            payload = dict(controls.brightfield_foolproof_analysis_settings())
-        payload["guided_mode"] = mode
-        payload["measure_type"] = "area"
-        return sanitize_settings(payload)
+            return sanitize_settings(controls.brightfield_he_fiber_analysis_settings())
+        return {"measure_type": "area", **controls.brightfield_area_analysis_settings()}
 
     def capture_widget_state(self, preset_module: str) -> dict:
         controls = self.window.data_panel
         fluoro = self.window.fluoro_workspace
-        if preset_module == "ihc":
-            return {
-                "active_method": self.current_method("ihc"),
-                "guided_mode": controls.current_ihc_guided_mode(),
-                "expert": sanitize_settings(controls.ihc_analysis_settings()),
-                "assisted": sanitize_settings(controls.ihc_guided_analysis_settings()),
-                "foolproof": sanitize_settings(controls.ihc_foolproof_analysis_settings()),
-            }
         if preset_module == "brightfield":
             return {
                 "active_method": self.current_method("brightfield"),
                 "measure_type": str(controls.brightfield_measure_type_combo.currentData() or "cells"),
-                "guided_mode": controls.current_brightfield_guided_mode(),
                 "cells": sanitize_settings(controls.bright_round_cell_analysis_settings()),
-                "fiber": sanitize_settings(controls.brightfield_analysis_settings()),
-                "expert": sanitize_settings(controls.brightfield_analysis_settings()),
-                "assisted": sanitize_settings(controls.brightfield_guided_analysis_settings()),
-                "foolproof": sanitize_settings(controls.brightfield_foolproof_analysis_settings()),
+                "fiber": sanitize_settings(controls.brightfield_he_fiber_analysis_settings()),
+                "area": controls.brightfield_area_analysis_settings(),
                 "independent": self.independent_settings('brightfield'),
             }
         if preset_module == "fluorescence":
@@ -198,33 +154,27 @@ class AnalysisStateController:
         previous = self._restoring
         self._restoring = True
         window = self.window
-        window._syncing_ihc_mode = True
-        window._syncing_brightfield_mode = True
+        window._syncing_brightfield_area_controls = True
         try:
-            if preset_module == "ihc":
-                if state.get("expert"):
-                    controls.set_ihc_analysis_settings(state["expert"])
-                if state.get("assisted"):
-                    controls.set_ihc_guided_analysis_settings(state["assisted"])
-                mode = str(state.get("guided_mode") or ("expert" if state.get("active_method") == "measure_dab_positive_area" else "foolproof"))
-                controls.set_ihc_guided_mode(mode)
-            elif preset_module == "brightfield":
+            if preset_module == "brightfield":
                 if state.get("cells"):
                     controls.set_cell_analysis_settings(state["cells"])
                 fiber = state.get("fiber") or state.get("expert")
                 if fiber:
-                    controls.set_brightfield_analysis_settings(fiber)
-                if state.get("assisted"):
-                    controls.set_brightfield_guided_analysis_settings(state["assisted"])
-                if state.get("foolproof"):
-                    controls.set_brightfield_foolproof_analysis_settings(state["foolproof"])
+                    controls.set_brightfield_he_fiber_analysis_settings(fiber)
+                area = state.get("area")
+                if area is None:
+                    area = state.get("assisted" if state.get("guided_mode") == "assisted" else "foolproof")
+                if area is not None:
+                    controls.set_brightfield_area_analysis_settings({
+                        "threshold_bias": area.get("threshold_bias", 0),
+                        "small_region_filter_bias": area.get("small_region_filter_bias", 0),
+                    })
                 measure_type = str(state.get("measure_type") or "")
                 if measure_type:
                     index = controls.brightfield_measure_type_combo.findData(measure_type)
                     if index >= 0:
                         controls.brightfield_measure_type_combo.setCurrentIndex(index)
-                if state.get("guided_mode"):
-                    controls.set_brightfield_guided_mode(str(state["guided_mode"]))
             elif preset_module == "fluorescence":
                 if state.get("count"):
                     fluoro.set_count_analysis_settings(state["count"])
@@ -249,8 +199,7 @@ class AnalysisStateController:
                     if task=='central' and 'peripheral_band' in task_state:
                         controls.band.setValue(task_state['peripheral_band'])
         finally:
-            window._syncing_ihc_mode = False
-            window._syncing_brightfield_mode = False
+            window._syncing_brightfield_area_controls = False
             self._restoring = previous
 
     def capture_outgoing(self, preset_module: str) -> None:
@@ -301,17 +250,9 @@ class AnalysisStateController:
         fluoro = self.window.fluoro_workspace
         previous = self._restoring
         self._restoring = True
-        self.window._syncing_ihc_mode = True
-        self.window._syncing_brightfield_mode = True
+        self.window._syncing_brightfield_area_controls = True
         try:
-            if module == "ihc":
-                mode = str(settings.get("guided_mode") or ("expert" if method == "measure_dab_positive_area" else "foolproof"))
-                controls.set_ihc_guided_mode(mode)
-                if mode == "expert":
-                    controls.set_ihc_analysis_settings(settings)
-                elif mode == "assisted":
-                    controls.set_ihc_guided_analysis_settings(settings)
-            elif module == "brightfield":
+            if module == "brightfield":
                 if method == "measure_bright_round_cells":
                     index = controls.brightfield_measure_type_combo.findData("cells")
                     if index >= 0:
@@ -321,19 +262,15 @@ class AnalysisStateController:
                     index = controls.brightfield_measure_type_combo.findData("fiber")
                     if index >= 0:
                         controls.brightfield_measure_type_combo.setCurrentIndex(index)
-                    controls.set_brightfield_analysis_settings(settings)
+                    controls.set_brightfield_he_fiber_analysis_settings(settings)
                 else:
                     index = controls.brightfield_measure_type_combo.findData("area")
                     if index >= 0:
                         controls.brightfield_measure_type_combo.setCurrentIndex(index)
-                    mode = str(settings.get("guided_mode") or ("expert" if method == "create_measurement" else "foolproof"))
-                    controls.set_brightfield_guided_mode(mode)
-                    if mode == "expert":
-                        controls.set_brightfield_analysis_settings(settings)
-                    elif mode == "assisted":
-                        controls.set_brightfield_guided_analysis_settings(settings)
-                    else:
-                        controls.set_brightfield_foolproof_analysis_settings(settings)
+                    controls.set_brightfield_area_analysis_settings({
+                        "threshold_bias": settings.get("threshold_bias", 0),
+                        "small_region_filter_bias": settings.get("small_region_filter_bias", 0),
+                    })
             elif module == "fluorescence":
                 if method == "count_channel_objects":
                     fluoro._set_measure_mode("spot_count")
@@ -345,8 +282,7 @@ class AnalysisStateController:
                     fluoro._set_measure_mode("roi_intensity")
                     fluoro.set_roi_analysis_settings(settings)
         finally:
-            self.window._syncing_ihc_mode = False
-            self.window._syncing_brightfield_mode = False
+            self.window._syncing_brightfield_area_controls = False
             self._restoring = previous
 
     def save_current(self, name: str, preset_module: str):

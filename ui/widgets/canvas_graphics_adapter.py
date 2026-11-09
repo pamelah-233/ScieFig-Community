@@ -209,25 +209,6 @@ def keep_scene_point_at_view_pos(view, scene_point, view_pos: QPoint) -> None:
         view.verticalScrollBar().setValue(view.verticalScrollBar().value() + int(round(dy)))
 
 
-def ensure_view_pan_room(view, content: QRectF) -> None:
-    if content is None or content.isNull() or content.width() <= 0 or content.height() <= 0:
-        return
-    viewport = view.viewport()
-    scale = abs(float(view.transform().m11())) or 1.0
-    extra_w = max(240.0, float(viewport.width()) / scale if viewport is not None else 240.0)
-    extra_h = max(240.0, float(viewport.height()) / scale if viewport is not None else 240.0)
-    expanded = content.adjusted(-extra_w, -extra_h, extra_w, extra_h)
-    current = QRectF(view.sceneRect())
-    if (
-        abs(current.x() - expanded.x()) < 1.0
-        and abs(current.y() - expanded.y()) < 1.0
-        and abs(current.width() - expanded.width()) < 1.0
-        and abs(current.height() - expanded.height()) < 1.0
-    ):
-        return
-    view.setSceneRect(expanded)
-
-
 def configure_scene_view(view: QGraphicsView, *, owner=None) -> None:
     if owner is not None:
         view.canvas_owner = owner
@@ -237,8 +218,6 @@ def configure_scene_view(view: QGraphicsView, *, owner=None) -> None:
     view.setFrameShape(QFrame.Shape.NoFrame)
     # The screen frame follows live content; it must not reuse stale background pixels.
     view.setCacheMode(QGraphicsView.CacheModeFlag.CacheNone)
-    view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-    view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
     view.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
     view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
     if not hasattr(view, "_space_pressed"):
@@ -315,9 +294,6 @@ def handle_canvas_pan_press(view, event) -> bool:
     view._panning = True
     view._last_pan_pos = event_viewport_point(event)
     view.setCursor(Qt.CursorShape.ClosedHandCursor)
-    controller = view_controller_of(view)
-    if controller is not None:
-        controller.begin_pan()
     event.accept()
     return True
 

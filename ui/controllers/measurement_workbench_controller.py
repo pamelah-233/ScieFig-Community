@@ -93,6 +93,7 @@ class MeasurementWorkbenchController(QObject):
             self.preview_row=window.brightfield_workspace.preview_toggle_panel
             old=self.preview_row.parentWidget().layout();self._preview_home=(old,old.indexOf(self.preview_row))
             old.removeWidget(self.preview_row);pick.addWidget(self.preview_row)
+            pick.addWidget(window.brightfield_workspace.white_balance.input_widget)
         self.panel.layout().insertWidget(1,self.selector_wrap)
         # Pin only image selection and task buttons. Display tools go below the
         # active form; neither white balance nor an idle preview row pushes the
@@ -106,16 +107,6 @@ class MeasurementWorkbenchController(QObject):
             button.clicked.connect(lambda checked=False,key=task:self.select(key))
         scroll=self.panel.findChild(QScrollArea)
         self.scroll=scroll
-        # White balance belonged above every BF operation; move it to a
-        # disclosure rather than allowing it to obscure the selected task.
-        if module=='brightfield':
-            workspace=window.brightfield_workspace
-            display=QWidget();display_layout=QVBoxLayout(display);display_layout.setContentsMargins(0,0,0,0)
-            for widget in (workspace.white_balance.widget,):
-                widget.parentWidget().layout().removeWidget(widget);display_layout.addWidget(widget)
-            section=WorkflowDisclosure('task_display_calibration',display)
-            host.layout().addWidget(section)
-            self.display_section=section
         self.task_title=QLabel();self.task_title.setObjectName('MeasurementTaskHeading');self.task_title.setWordWrap(True)
         host.layout().insertWidget(0,self.task_title)
         self.task_description=QLabel();self.task_description.setWordWrap(True)

@@ -15,16 +15,12 @@ from core.brightfield_semantics import (
 )
 from core.image_analysis import analyze_brightfield_image
 from core.image_analysis.brightfield_guided import (
-    BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION,
-    BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION,
-    BRIGHTFIELD_ASSISTED_SENSITIVITY_MAPPING_VERSION,
-    BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION,
+    BRIGHTFIELD_AUTO_MAPPING_VERSION,
     BRIGHTFIELD_GUIDED_MAPPING_VERSION,
     BRIGHTFIELD_GUIDED_PREVIEW_MATCH_STATUS,
     BRIGHTFIELD_GUIDED_PREVIEW_STATUS,
-    apply_brightfield_assisted_small_region_filter_bias,
-    apply_brightfield_assisted_threshold_bias,
-    apply_brightfield_foolproof_threshold_bias,
+    apply_brightfield_small_region_filter_bias,
+    apply_brightfield_guided_threshold_bias,
     build_brightfield_guided_effective_settings_snapshot,
     neutral_brightfield_guided_slider_values,
 )
@@ -154,38 +150,26 @@ def _write_synthetic_min_area_edge_he_png(path: Path) -> Path:
     image = QImage(64, 32, QImage.Format.Format_RGB32)
     image.fill(QColor(246, 246, 246))
 
-    for y in range(4, 6):
-        for x in range(4, 7):
-            image.setPixelColor(x, y, QColor(232, 170, 192))
-
-    for y in range(4, 7):
-        for x in range(14, 17):
-            image.setPixelColor(x, y, QColor(232, 170, 192))
-
-    for y in range(4, 7):
-        for x in range(24, 29):
-            image.setPixelColor(x, y, QColor(232, 170, 192))
+    for height, width, offset in ((2, 3, 4), (3, 3, 14), (3, 5, 24)):
+        for y in range(4, 4 + height):
+            for x in range(offset, offset + width):
+                image.setPixelColor(x, y, QColor(232, 170, 192))
 
     assert image.save(str(path))
     return path
 
 
-def _write_synthetic_zero_baseline_min_area_he_png(path: Path) -> Path:
-    image = QImage(64, 32, QImage.Format.Format_RGB32)
-    image.fill(QColor(246, 246, 246))
+@pytest.fixture
+def min_area_baseline(monkeypatch):
+    from core.models import brightfield_panel
+    estimate = brightfield_panel.estimate_he_auto_parameters
 
-    image.setPixelColor(4, 4, QColor(232, 170, 192))
+    def estimate_with_known_min_area(rgb, **settings):
+        result = estimate(rgb, **settings)
+        result.recommended_min_area = 8
+        return result
 
-    for y in range(4, 6):
-        for x in range(14, 16):
-            image.setPixelColor(x, y, QColor(232, 170, 192))
-
-    for y in range(4, 7):
-        for x in range(24, 27):
-            image.setPixelColor(x, y, QColor(232, 170, 192))
-
-    assert image.save(str(path))
-    return path
+    monkeypatch.setattr(brightfield_panel, "estimate_he_auto_parameters", estimate_with_known_min_area)
 
 
 def _read_rgb(path: Path) -> np.ndarray:
@@ -537,7 +521,7 @@ def test_b2a_foolproof_whole_image_guided_metadata_is_persisted_without_changing
     panel = BrightfieldPanel(panel_id="Figure1BFB2AFoolproofWhole")
     imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
 
-    measurement = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof")
+    measurement = panel.auto_analyze_he(image_uid=imported["uid"])
     recomputed_results = _recompute_brightfield_results(panel, measurement)
     restored = BrightfieldPanel.from_dict(panel.to_dict())
     restored_measurement = restored.analysis["brightfield_measurements"][-1]
@@ -548,13 +532,16 @@ def test_b2a_foolproof_whole_image_guided_metadata_is_persisted_without_changing
     assert measurement["results"]["mean_object_area_px"] == pytest.approx(16.0)
     assert measurement["results"]["roi_area_px"] == 64
     assert measurement["params"]["a_min"] == pytest.approx(20.727378845214844)
-    assert measurement["guided_mapping_version"] == BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION
+    assert measurement["guided_mapping_version"] == BRIGHTFIELD_AUTO_MAPPING_VERSION
     assert measurement["guided_preview_status"] == BRIGHTFIELD_GUIDED_PREVIEW_STATUS
     assert measurement["guided_baseline_source"] == "image_auto"
     assert measurement["guided_slider_values"] == {
         **neutral_brightfield_guided_slider_values(),
         "threshold_bias_active": True,
         "threshold_bias_inactive_reason": None,
+        "small_region_filter_bias": 0,
+        "small_region_filter_baseline_min_area_px": measurement["params"]["min_object_area_px"],
+        "small_region_filter_effective_min_area_px": measurement["params"]["min_object_area_px"],
     }
     assert measurement["guided_effective_settings_hash"] == sha256_json(measurement["guided_effective_settings"])
     assert measurement["guided_effective_settings"]["image_context"] == {
@@ -575,6 +562,9 @@ def test_b2a_foolproof_whole_image_guided_metadata_is_persisted_without_changing
         **neutral_brightfield_guided_slider_values(),
         "threshold_bias_active": True,
         "threshold_bias_inactive_reason": None,
+        "small_region_filter_bias": 0,
+        "small_region_filter_baseline_min_area_px": measurement["params"]["min_object_area_px"],
+        "small_region_filter_effective_min_area_px": measurement["params"]["min_object_area_px"],
     }
 
 
@@ -584,7 +574,7 @@ def test_b2a_foolproof_roi_guided_metadata_is_persisted_without_changing_results
     imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
     panel.set_image_roi(imported["uid"], "rectangle", {"x": 2, "y": 1, "w": 4, "h": 4})
 
-    measurement = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof")
+    measurement = panel.auto_analyze_he(image_uid=imported["uid"])
     recomputed_results = _recompute_brightfield_results(panel, measurement)
 
     assert measurement["results"] == recomputed_results
@@ -597,6 +587,9 @@ def test_b2a_foolproof_roi_guided_metadata_is_persisted_without_changing_results
         **neutral_brightfield_guided_slider_values(),
         "threshold_bias_active": True,
         "threshold_bias_inactive_reason": None,
+        "small_region_filter_bias": 0,
+        "small_region_filter_baseline_min_area_px": measurement["params"]["min_object_area_px"],
+        "small_region_filter_effective_min_area_px": measurement["params"]["min_object_area_px"],
     }
     assert measurement["guided_effective_settings"]["image_context"] == {
         "image_uid": imported["uid"],
@@ -617,149 +610,28 @@ def test_b2a_foolproof_roi_guided_metadata_is_persisted_without_changing_results
     assert measurement["guided_effective_settings"]["analysis_region"]["roi_limited"] is True
 
 
-def test_b2c1_assisted_threshold_bias_zero_preserves_current_baseline_and_persists_metadata(tmp_path) -> None:
-    image_path = _write_synthetic_muscle_like_he_png(tmp_path / "b2a_assisted.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFB2AAssisted")
-    imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
-
-    baseline = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high"},
-    )
-    measurement = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 0},
-    )
-    recomputed_results = _recompute_brightfield_results(panel, measurement)
-    restored = BrightfieldPanel.from_dict(panel.to_dict())
-    restored_measurement = restored.analysis["brightfield_measurements"][-1]
-
-    assert measurement["params"] == baseline["params"]
-    assert measurement["results"] == baseline["results"]
-    assert measurement["results"] == recomputed_results
-    assert BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION == "v7.2-b2c2-assisted-sensitivity-min-area-1"
-    assert measurement["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert measurement["guided_preview_status"] == BRIGHTFIELD_GUIDED_PREVIEW_STATUS
-    assert measurement["guided_baseline_source"] == "image_auto"
-    assert measurement["guided_slider_values"] == {
-        **neutral_brightfield_guided_slider_values(),
-        "threshold_bias_active": True,
-        "threshold_bias_inactive_reason": None,
-        "small_region_filter_bias": 0,
-        "small_region_filter_mapping_version": BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION,
-        "small_region_filter_baseline_min_area_px": 8,
-        "small_region_filter_effective_min_area_px": 8,
-    }
-    assert measurement["guided_effective_settings"]["guided_mode"] == "assisted"
-    assert measurement["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert measurement["guided_effective_settings"]["effective_settings"]["sensitivity"] == "low"
-    assert measurement["guided_effective_settings"]["effective_settings"]["cleanup_level"] == "high"
-    assert measurement["guided_effective_settings"]["threshold_method"] == "lab_eosin_quantiles"
-    assert measurement["analysis_metadata"]["assisted_threshold_bias"] == 0
-    assert measurement["analysis_metadata"]["assisted_threshold_bias_active"] is True
-    assert measurement["analysis_metadata"]["assisted_threshold_bias_inactive_reason"] is None
-    assert measurement["auto_parameter_result"]["metadata"]["assisted_threshold_bias"] == 0
-    assert measurement["auto_parameter_result"]["metadata"]["assisted_threshold_bias_active"] is True
-    assert measurement["auto_parameter_result"]["metadata"]["assisted_threshold_bias_inactive_reason"] is None
-    assert "foolproof_threshold_bias" not in measurement["analysis_metadata"]
-    assert "foolproof_threshold_bias" not in measurement["auto_parameter_result"]["metadata"]
-    assert restored_measurement["guided_effective_settings_hash"] == measurement["guided_effective_settings_hash"]
-    assert restored_measurement["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert restored_measurement["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert restored_measurement["analysis_metadata"]["assisted_threshold_bias"] == 0
-    assert restored_measurement["guided_slider_values"] == measurement["guided_slider_values"]
-
-
-def test_b2c2_assisted_small_region_filter_bias_zero_preserves_b2c1_baseline_and_persists_metadata(tmp_path) -> None:
-    image_path = _write_synthetic_muscle_like_he_png(tmp_path / "b2c2_assisted_filter_zero.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFB2C2AssistedZero")
-    imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
-
-    baseline = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high"},
-    )
-    measurement = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={
-            "sensitivity": "low",
-            "cleanup_level": "high",
-            "threshold_bias": 0,
-            "small_region_filter_bias": 0,
-        },
-    )
-    restored = BrightfieldPanel.from_dict(panel.to_dict())
-    restored_measurement = restored.analysis["brightfield_measurements"][-1]
-
-    assert measurement["params"] == baseline["params"]
-    assert measurement["results"] == baseline["results"]
-    assert measurement["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert measurement["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert measurement["analysis_metadata"]["assisted_small_region_filter_bias"] == 0
-    assert measurement["analysis_metadata"]["assisted_small_region_filter_mapping_version"] == (
-        BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION
-    )
-    assert measurement["analysis_metadata"]["assisted_baseline_min_area_px"] == baseline["params"]["min_object_area_px"]
-    assert measurement["analysis_metadata"]["assisted_effective_min_area_px"] == baseline["params"]["min_object_area_px"]
-    assert measurement["auto_parameter_result"]["metadata"]["assisted_small_region_filter_bias"] == 0
-    assert measurement["auto_parameter_result"]["metadata"]["assisted_small_region_filter_mapping_version"] == (
-        BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION
-    )
-    assert measurement["guided_slider_values"]["small_region_filter_bias"] == 0
-    assert measurement["guided_slider_values"]["small_region_filter_mapping_version"] == (
-        BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION
-    )
-    assert measurement["guided_slider_values"]["small_region_filter_baseline_min_area_px"] == baseline["params"]["min_object_area_px"]
-    assert measurement["guided_slider_values"]["small_region_filter_effective_min_area_px"] == baseline["params"]["min_object_area_px"]
-    assert restored_measurement["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert restored_measurement["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert restored_measurement["analysis_metadata"]["assisted_small_region_filter_bias"] == 0
-    assert restored_measurement["analysis_metadata"]["assisted_small_region_filter_mapping_version"] == (
-        BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION
-    )
-    assert restored_measurement["guided_slider_values"] == measurement["guided_slider_values"]
-    assert restored.data["guided_state"]["assisted_small_region_filter_bias"] == 0
-
-
 def test_b2b_foolproof_threshold_bias_zero_preserves_b2a_output(tmp_path) -> None:
     image_path = _write_synthetic_pink_he_png(tmp_path / "b2b_bias_zero.png")
     panel = BrightfieldPanel(panel_id="Figure1BFB2BZero")
     imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
 
-    baseline = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof")
+    baseline = panel.auto_analyze_he(image_uid=imported["uid"])
     zero_bias = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="foolproof",
         settings={"threshold_bias": 0},
     )
 
     assert zero_bias["params"] == baseline["params"]
     assert zero_bias["results"] == baseline["results"]
-    assert zero_bias["guided_mapping_version"] == BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION
+    assert zero_bias["guided_mapping_version"] == BRIGHTFIELD_AUTO_MAPPING_VERSION
     assert zero_bias["guided_slider_values"]["threshold_bias"] == 0
     assert zero_bias["guided_slider_values"]["threshold_bias_active"] is True
 
 
 def test_b2b_foolproof_threshold_bias_formula_is_exact_and_versioned() -> None:
-    applied = apply_brightfield_foolproof_threshold_bias(20.0, 2)
+    applied = apply_brightfield_guided_threshold_bias(20.0, 2)
 
-    assert BRIGHTFIELD_FOOLPROOF_SENSITIVITY_MAPPING_VERSION == "v7.2-b2b-foolproof-sensitivity-1"
-    assert applied == {
-        "threshold_bias": 2,
-        "baseline_a_min": 20.0,
-        "delta_a_min": -2.0,
-        "adjusted_a_min": 18.0,
-    }
-
-
-def test_b2c1_assisted_threshold_bias_formula_is_exact_and_versioned() -> None:
-    applied = apply_brightfield_assisted_threshold_bias(20.0, 2)
-
-    assert BRIGHTFIELD_ASSISTED_SENSITIVITY_MAPPING_VERSION == "v7.2-b2c-assisted-sensitivity-1"
+    assert BRIGHTFIELD_AUTO_MAPPING_VERSION == "v7.2-auto-sensitivity-min-area-1"
     assert applied == {
         "threshold_bias": 2,
         "baseline_a_min": 20.0,
@@ -769,9 +641,8 @@ def test_b2c1_assisted_threshold_bias_formula_is_exact_and_versioned() -> None:
 
 
 def test_b2c2_assisted_small_region_filter_formula_is_exact_and_versioned() -> None:
-    applied = apply_brightfield_assisted_small_region_filter_bias(8, 2)
+    applied = apply_brightfield_small_region_filter_bias(8, 2)
 
-    assert BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION == "v7.2-b2c2-assisted-min-area-filtering-1"
     assert applied == {
         "small_region_filter_bias": 2,
         "baseline_min_area_px": 8,
@@ -781,10 +652,9 @@ def test_b2c2_assisted_small_region_filter_formula_is_exact_and_versioned() -> N
 
 
 def test_b2c2_assisted_small_region_filter_zero_baseline_stays_zero_for_all_biases() -> None:
-    assert BRIGHTFIELD_ASSISTED_SMALL_REGION_FILTER_MAPPING_VERSION == "v7.2-b2c2-assisted-min-area-filtering-1"
 
     for bias, expected_scale in ((-2, 0.5), (0, 1.0), (2, 1.5)):
-        applied = apply_brightfield_assisted_small_region_filter_bias(0, bias)
+        applied = apply_brightfield_small_region_filter_bias(0, bias)
         assert applied == {
             "small_region_filter_bias": bias,
             "baseline_min_area_px": 0,
@@ -798,9 +668,9 @@ def test_b2b_foolproof_threshold_bias_monotonic_target_mask_area_before_object_f
     panel = BrightfieldPanel(panel_id="Figure1BFB2BMonotonic")
     imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
 
-    low = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof", settings={"threshold_bias": -2})
-    neutral = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof", settings={"threshold_bias": 0})
-    high = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof", settings={"threshold_bias": 2})
+    low = panel.auto_analyze_he(image_uid=imported["uid"], settings={"threshold_bias": -2})
+    neutral = panel.auto_analyze_he(image_uid=imported["uid"], settings={"threshold_bias": 0})
+    high = panel.auto_analyze_he(image_uid=imported["uid"], settings={"threshold_bias": 2})
 
     low_area = low["analysis_metadata"]["target_mask_area_px_before_object_filter"]
     neutral_area = neutral["analysis_metadata"]["target_mask_area_px_before_object_filter"]
@@ -815,10 +685,10 @@ def test_b2b_foolproof_threshold_edge_fixture_changes_target_mask_area(tmp_path)
     panel = BrightfieldPanel(panel_id="Figure1BFB2BThresholdEdge")
     imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
 
-    baseline = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof")
-    low = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof", settings={"threshold_bias": -2})
-    neutral = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof", settings={"threshold_bias": 0})
-    high = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof", settings={"threshold_bias": 2})
+    baseline = panel.auto_analyze_he(image_uid=imported["uid"])
+    low = panel.auto_analyze_he(image_uid=imported["uid"], settings={"threshold_bias": -2})
+    neutral = panel.auto_analyze_he(image_uid=imported["uid"], settings={"threshold_bias": 0})
+    high = panel.auto_analyze_he(image_uid=imported["uid"], settings={"threshold_bias": 2})
 
     low_area = low["analysis_metadata"]["target_mask_area_px_before_object_filter"]
     neutral_area = neutral["analysis_metadata"]["target_mask_area_px_before_object_filter"]
@@ -830,129 +700,26 @@ def test_b2b_foolproof_threshold_edge_fixture_changes_target_mask_area(tmp_path)
     assert neutral["results"] == baseline["results"]
 
 
-def test_b2c1_assisted_threshold_edge_fixture_changes_target_mask_area(tmp_path) -> None:
-    image_path = _write_synthetic_threshold_edge_he_png(tmp_path / "b2c1_assisted_threshold_edge.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFB2C1AssistedThresholdEdge")
-    imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
-
-    baseline = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high"},
-    )
-    low = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": -2},
-    )
-    neutral = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 0},
-    )
-    high = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 2},
-    )
-
-    low_area = low["analysis_metadata"]["target_mask_area_px_before_object_filter"]
-    neutral_area = neutral["analysis_metadata"]["target_mask_area_px_before_object_filter"]
-    high_area = high["analysis_metadata"]["target_mask_area_px_before_object_filter"]
-
-    assert neutral["results"] == baseline["results"]
-    assert neutral["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert low["params"]["a_min"] > neutral["params"]["a_min"] > high["params"]["a_min"]
-    assert low_area <= neutral_area <= high_area
-    assert low_area < neutral_area or neutral_area < high_area
-
-
-def test_b2c1_assisted_batch_lock_disables_threshold_bias_and_records_inactive_metadata(tmp_path) -> None:
-    first_path = _write_synthetic_pink_he_png(tmp_path / "b2c1_assisted_batch_first.png")
-    second_path = _write_synthetic_pink_he_png(tmp_path / "b2c1_assisted_batch_second.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFB2C1AssistedBatchInactive")
-    first = panel.import_image(first_path, group="Batch", stain_type="H&E")
-    second = panel.import_image(second_path, group="Batch", stain_type="H&E")
-
-    first_measurement = panel.auto_analyze_he(
-        image_uid=first["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 2},
-    )
-    panel.set_active_image(first["uid"])
-    panel.apply_batch_threshold_from_measurement(first_measurement["measurement_uuid"], lock=True)
-
-    locked = panel.auto_analyze_he(
-        image_uid=second["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": -2},
-    )
-
-    assert locked["threshold_source"] == "batch_locked"
-    assert locked["params"]["a_min"] == pytest.approx(first_measurement["params"]["a_min"])
-    assert locked["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert locked["guided_slider_values"]["threshold_bias"] == -2
-    assert locked["guided_slider_values"]["threshold_bias_active"] is False
-    assert locked["guided_slider_values"]["threshold_bias_inactive_reason"] == "batch_threshold_locked"
-    assert locked["analysis_metadata"]["assisted_threshold_bias"] == -2
-    assert locked["analysis_metadata"]["assisted_threshold_bias_active"] is False
-    assert locked["analysis_metadata"]["assisted_threshold_bias_inactive_reason"] == "batch_threshold_locked"
-
-
-def test_b2c1_assisted_guided_preview_is_transient_and_final_hash_matches_when_preview_is_fresh(tmp_path) -> None:
-    image_path = _write_synthetic_threshold_edge_he_png(tmp_path / "b2c1_assisted_preview_hash.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFB2C1AssistedPreview")
-    imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
-
-    preview = panel.build_guided_preview(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        stain_type="H&E",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 1},
-    )
-
-    assert panel.analysis["brightfield_measurements"] == []
-    assert panel.analysis["brightfield_ai_object_count_measurements"] == []
-    assert preview["guided_metadata"]["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert preview["guided_metadata"]["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-
-    measurement = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 1},
-    )
-
-    assert measurement["guided_mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert measurement["guided_effective_settings"]["mapping_version"] == BRIGHTFIELD_ASSISTED_COMBINED_MAPPING_VERSION
-    assert measurement["guided_effective_settings_hash"] == preview["preview_hash"]
-    assert measurement["guided_preview_status"] == BRIGHTFIELD_GUIDED_PREVIEW_MATCH_STATUS
-    assert measurement["results"] == preview["analysis"]["results"]
-
-
-def test_b2c2_assisted_min_area_edge_fixture_keeps_threshold_invariant_and_changes_retained_regions(tmp_path) -> None:
+def test_b2c2_assisted_min_area_edge_fixture_keeps_threshold_invariant_and_changes_retained_regions(tmp_path, min_area_baseline) -> None:
     image_path = _write_synthetic_min_area_edge_he_png(tmp_path / "b2c2_assisted_min_area_edge.png")
     panel = BrightfieldPanel(panel_id="Figure1BFB2C2AssistedMinAreaEdge")
     imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
 
     baseline = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high"},
+        settings={},
     )
     low = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 0, "small_region_filter_bias": -2},
+        settings={"threshold_bias": 0, "small_region_filter_bias": -2},
     )
     neutral = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 0, "small_region_filter_bias": 0},
+        settings={"threshold_bias": 0, "small_region_filter_bias": 0},
     )
     high = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 0, "small_region_filter_bias": 2},
+        settings={"threshold_bias": 0, "small_region_filter_bias": 2},
     )
 
     assert neutral["results"] == baseline["results"]
@@ -962,14 +729,14 @@ def test_b2c2_assisted_min_area_edge_fixture_keeps_threshold_invariant_and_chang
     assert [low["params"]["min_object_area_px"], neutral["params"]["min_object_area_px"], high["params"]["min_object_area_px"]] == [4, 8, 12]
     assert low["analysis_metadata"]["target_mask_area_px_before_object_filter"] == neutral["analysis_metadata"]["target_mask_area_px_before_object_filter"]
     assert high["analysis_metadata"]["target_mask_area_px_before_object_filter"] == neutral["analysis_metadata"]["target_mask_area_px_before_object_filter"]
-    assert low["analysis_metadata"]["assisted_effective_min_area_px"] < neutral["analysis_metadata"]["assisted_effective_min_area_px"] < high["analysis_metadata"]["assisted_effective_min_area_px"]
-    assert [low["analysis_metadata"]["assisted_effective_min_area_px"], neutral["analysis_metadata"]["assisted_effective_min_area_px"], high["analysis_metadata"]["assisted_effective_min_area_px"]] == [4, 8, 12]
+    assert low["guided_slider_values"]["small_region_filter_effective_min_area_px"] < neutral["guided_slider_values"]["small_region_filter_effective_min_area_px"] < high["guided_slider_values"]["small_region_filter_effective_min_area_px"]
+    assert [low["guided_slider_values"]["small_region_filter_effective_min_area_px"], neutral["guided_slider_values"]["small_region_filter_effective_min_area_px"], high["guided_slider_values"]["small_region_filter_effective_min_area_px"]] == [4, 8, 12]
     assert [low["results"]["object_count"], neutral["results"]["object_count"], high["results"]["object_count"]] == [3, 2, 1]
     assert low["analysis_metadata"]["final_mask_area_px"] > neutral["analysis_metadata"]["final_mask_area_px"] > high["analysis_metadata"]["final_mask_area_px"]
     assert low["results"]["mean_object_area_px"] < neutral["results"]["mean_object_area_px"] < high["results"]["mean_object_area_px"]
 
 
-def test_b2c2_assisted_batch_lock_keeps_threshold_fixed_while_small_region_filter_remains_active(tmp_path) -> None:
+def test_b2c2_assisted_batch_lock_keeps_threshold_fixed_while_small_region_filter_remains_active(tmp_path, min_area_baseline) -> None:
     first_path = _write_synthetic_min_area_edge_he_png(tmp_path / "b2c2_assisted_batch_first.png")
     second_path = _write_synthetic_min_area_edge_he_png(tmp_path / "b2c2_assisted_batch_second.png")
     panel = BrightfieldPanel(panel_id="Figure1BFB2C2AssistedBatchLock")
@@ -978,21 +745,18 @@ def test_b2c2_assisted_batch_lock_keeps_threshold_fixed_while_small_region_filte
 
     first_measurement = panel.auto_analyze_he(
         image_uid=first["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 2, "small_region_filter_bias": 0},
+        settings={"threshold_bias": 2, "small_region_filter_bias": 0},
     )
     panel.set_active_image(first["uid"])
     panel.apply_batch_threshold_from_measurement(first_measurement["measurement_uuid"], lock=True)
 
     low = panel.auto_analyze_he(
         image_uid=second["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": -2, "small_region_filter_bias": -2},
+        settings={"threshold_bias": -2, "small_region_filter_bias": -2},
     )
     high = panel.auto_analyze_he(
         image_uid=second["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": -2, "small_region_filter_bias": 2},
+        settings={"threshold_bias": -2, "small_region_filter_bias": 2},
     )
 
     assert low["threshold_source"] == "batch_locked"
@@ -1002,49 +766,12 @@ def test_b2c2_assisted_batch_lock_keeps_threshold_fixed_while_small_region_filte
     assert low["params"]["cleanup_min_area_px"] == high["params"]["cleanup_min_area_px"] == 0
     assert [low["params"]["min_object_area_px"], high["params"]["min_object_area_px"]] == [4, 12]
     assert low["analysis_metadata"]["target_mask_area_px_before_object_filter"] == high["analysis_metadata"]["target_mask_area_px_before_object_filter"]
-    assert low["analysis_metadata"]["assisted_threshold_bias_active"] is False
-    assert high["analysis_metadata"]["assisted_threshold_bias_active"] is False
-    assert low["analysis_metadata"]["assisted_threshold_bias_inactive_reason"] == "batch_threshold_locked"
-    assert high["analysis_metadata"]["assisted_threshold_bias_inactive_reason"] == "batch_threshold_locked"
-    assert low["analysis_metadata"]["assisted_effective_min_area_px"] < high["analysis_metadata"]["assisted_effective_min_area_px"]
+    assert low["guided_slider_values"]["threshold_bias_active"] is False
+    assert high["guided_slider_values"]["threshold_bias_active"] is False
+    assert low["guided_slider_values"]["threshold_bias_inactive_reason"] == "batch_threshold_locked"
+    assert high["guided_slider_values"]["threshold_bias_inactive_reason"] == "batch_threshold_locked"
+    assert low["guided_slider_values"]["small_region_filter_effective_min_area_px"] < high["guided_slider_values"]["small_region_filter_effective_min_area_px"]
     assert low["results"]["object_count"] > high["results"]["object_count"]
-
-
-def test_b2c2_assisted_zero_baseline_small_region_filter_biases_remain_no_filter(tmp_path) -> None:
-    image_path = _write_synthetic_zero_baseline_min_area_he_png(tmp_path / "b2c2_assisted_zero_baseline.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFB2C2AssistedZeroBaseline")
-    imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
-
-    baseline = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "off"},
-    )
-    low = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "off", "threshold_bias": 0, "small_region_filter_bias": -2},
-    )
-    neutral = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "off", "threshold_bias": 0, "small_region_filter_bias": 0},
-    )
-    high = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "off", "threshold_bias": 0, "small_region_filter_bias": 2},
-    )
-
-    assert baseline["params"]["cleanup_min_area_px"] == 0
-    assert baseline["params"]["min_object_area_px"] == 0
-    assert [low["analysis_metadata"]["assisted_effective_min_area_px"], neutral["analysis_metadata"]["assisted_effective_min_area_px"], high["analysis_metadata"]["assisted_effective_min_area_px"]] == [0, 0, 0]
-    assert [low["params"]["cleanup_min_area_px"], neutral["params"]["cleanup_min_area_px"], high["params"]["cleanup_min_area_px"]] == [0, 0, 0]
-    assert [low["params"]["min_object_area_px"], neutral["params"]["min_object_area_px"], high["params"]["min_object_area_px"]] == [0, 0, 0]
-    assert low["params"]["a_min"] == pytest.approx(neutral["params"]["a_min"])
-    assert high["params"]["a_min"] == pytest.approx(neutral["params"]["a_min"])
-    assert low["analysis_metadata"]["target_mask_area_px_before_object_filter"] == neutral["analysis_metadata"]["target_mask_area_px_before_object_filter"] == high["analysis_metadata"]["target_mask_area_px_before_object_filter"]
-    assert low["results"] == baseline["results"] == neutral["results"] == high["results"]
 
 
 def test_b2c2_assisted_guided_preview_hash_tracks_small_region_filter_bias_and_stays_transient(tmp_path) -> None:
@@ -1054,9 +781,8 @@ def test_b2c2_assisted_guided_preview_hash_tracks_small_region_filter_bias_and_s
 
     preview = panel.build_guided_preview(
         image_uid=imported["uid"],
-        guided_mode="assisted",
         stain_type="H&E",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 1, "small_region_filter_bias": 2},
+        settings={"threshold_bias": 1, "small_region_filter_bias": 2},
     )
 
     assert panel.analysis["brightfield_measurements"] == []
@@ -1064,13 +790,11 @@ def test_b2c2_assisted_guided_preview_hash_tracks_small_region_filter_bias_and_s
 
     matched = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 1, "small_region_filter_bias": 2},
+        settings={"threshold_bias": 1, "small_region_filter_bias": 2},
     )
     stale = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high", "threshold_bias": 1, "small_region_filter_bias": -2},
+        settings={"threshold_bias": 1, "small_region_filter_bias": -2},
     )
 
     assert matched["guided_effective_settings_hash"] == preview["preview_hash"]
@@ -1078,28 +802,6 @@ def test_b2c2_assisted_guided_preview_hash_tracks_small_region_filter_bias_and_s
     assert matched["results"] == preview["analysis"]["results"]
     assert stale["guided_effective_settings_hash"] != preview["preview_hash"]
     assert stale["guided_preview_status"] != BRIGHTFIELD_GUIDED_PREVIEW_MATCH_STATUS
-
-
-def test_b2c2_assisted_small_region_filter_metadata_is_isolated_from_foolproof_manual_and_ai(tmp_path) -> None:
-    image_path = _write_synthetic_min_area_edge_he_png(tmp_path / "b2c2_assisted_isolation.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFB2C2AssistedIsolation")
-    imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
-
-    foolproof = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof", settings={"threshold_bias": 1})
-    manual = panel.create_measurement(image_uid=imported["uid"], settings=_settings())
-    panel.calibrate_he_fiber_area(image_uid=imported["uid"])
-    ai = panel.create_ai_object_count_measurement(image_uid=imported["uid"])
-
-    for key in (
-        "assisted_small_region_filter_bias",
-        "assisted_small_region_filter_mapping_version",
-        "assisted_baseline_min_area_px",
-        "assisted_effective_min_area_px",
-    ):
-        assert key not in foolproof["analysis_metadata"]
-        assert key not in foolproof["auto_parameter_result"]["metadata"]
-        assert key not in manual["analysis_metadata"]
-        assert key not in ai["analysis_metadata"]
 
 
 def test_profile_preset_measurement_for_oil_red_o_marks_result_warn_with_experimental_metadata(tmp_path) -> None:
@@ -1141,7 +843,6 @@ def test_b2a_profile_preset_hash_ignores_unrelated_he_batch_lock_state(tmp_path)
 
     preview_before = panel.build_guided_preview(
         image_uid=oil_image["uid"],
-        guided_mode="foolproof",
         stain_type="Oil Red O",
     )
     measurement_before = panel.create_profile_preset_measurement(
@@ -1149,13 +850,12 @@ def test_b2a_profile_preset_hash_ignores_unrelated_he_batch_lock_state(tmp_path)
         guided_mode="foolproof",
     )
 
-    he_measurement = panel.auto_analyze_he(image_uid=he_image["uid"], guided_mode="foolproof")
+    he_measurement = panel.auto_analyze_he(image_uid=he_image["uid"])
     panel.set_active_image(he_image["uid"])
     panel.apply_batch_threshold_from_measurement(he_measurement["measurement_uuid"], lock=True)
 
     preview_after = panel.build_guided_preview(
         image_uid=oil_image["uid"],
-        guided_mode="foolproof",
         stain_type="Oil Red O",
     )
     measurement_after = panel.create_profile_preset_measurement(
@@ -1268,24 +968,24 @@ def test_auto_analyze_he_reuses_locked_batch_threshold_for_later_images(tmp_path
     first = panel.import_image(first_path, group="Batch", stain_type="H&E")
     second = panel.import_image(second_path, group="Batch", stain_type="H&E")
 
-    first_measurement = panel.auto_analyze_he(image_uid=first["uid"], guided_mode="assisted")
+    first_measurement = panel.auto_analyze_he(image_uid=first["uid"])
     panel.set_active_image(first["uid"])
     batch_state = panel.apply_batch_threshold_from_measurement(first_measurement["measurement_uuid"], lock=True)
     second_measurement = panel.auto_analyze_he(image_uid=second["uid"])
 
     assert panel.data["guided_state"]["batch_threshold_state"]["locked"] is True
     assert panel.data["guided_state"]["batch_threshold_state"]["batch_threshold"] == pytest.approx(first_measurement["params"]["a_min"])
-    assert batch_state["batch_lock_source_mode"] == "assisted"
+    assert batch_state["batch_lock_source_mode"] == "foolproof"
     assert second_measurement["threshold_source"] == "batch_locked"
     assert second_measurement["params"]["a_min"] == pytest.approx(first_measurement["params"]["a_min"])
     assert second_measurement["analysis_metadata"]["batch_lock_applied"] is True
     assert second_measurement["analysis_metadata"]["batch_threshold_source_image"] == first["uid"]
     assert second_measurement["analysis_metadata"]["batch_threshold_method"] == first_measurement["analysis_metadata"]["threshold_method"]
-    assert second_measurement["analysis_metadata"]["batch_lock_source_mode"] == "assisted"
+    assert second_measurement["analysis_metadata"]["batch_lock_source_mode"] == "foolproof"
     _assert_b1_semantics(
         first_measurement,
-        analysis_mode="guided_assisted",
-        guided_mode="assisted",
+        analysis_mode="guided_foolproof",
+        guided_mode="foolproof",
         threshold_source="image_auto",
         segmentation_mode="lab",
         tissue_mask_enabled=True,
@@ -1311,7 +1011,7 @@ def test_auto_analyze_he_reuses_locked_batch_threshold_for_later_images(tmp_path
     assert restored_measurement["analysis_metadata"]["batch_lock_applied"] is True
     assert restored_measurement["analysis_metadata"]["batch_threshold_source_image"] == first["uid"]
     assert restored_measurement["analysis_metadata"]["batch_threshold_method"] == first_measurement["analysis_metadata"]["threshold_method"]
-    assert restored_measurement["analysis_metadata"]["batch_lock_source_mode"] == "assisted"
+    assert restored_measurement["analysis_metadata"]["batch_lock_source_mode"] == "foolproof"
     _assert_b1_semantics(
         restored_measurement,
         analysis_mode="guided_foolproof",
@@ -1331,7 +1031,6 @@ def test_b2b_batch_lock_disables_foolproof_threshold_bias_and_records_inactive_m
 
     first_measurement = panel.auto_analyze_he(
         image_uid=first["uid"],
-        guided_mode="foolproof",
         settings={"threshold_bias": 2},
     )
     panel.set_active_image(first["uid"])
@@ -1339,7 +1038,6 @@ def test_b2b_batch_lock_disables_foolproof_threshold_bias_and_records_inactive_m
 
     locked = panel.auto_analyze_he(
         image_uid=second["uid"],
-        guided_mode="foolproof",
         settings={"threshold_bias": 2},
     )
 
@@ -1348,8 +1046,8 @@ def test_b2b_batch_lock_disables_foolproof_threshold_bias_and_records_inactive_m
     assert locked["guided_slider_values"]["threshold_bias"] == 2
     assert locked["guided_slider_values"]["threshold_bias_active"] is False
     assert locked["guided_slider_values"]["threshold_bias_inactive_reason"] == "batch_threshold_locked"
-    assert locked["analysis_metadata"]["foolproof_threshold_bias_active"] is False
-    assert locked["analysis_metadata"]["foolproof_threshold_bias_inactive_reason"] == "batch_threshold_locked"
+    assert locked["guided_slider_values"]["threshold_bias_active"] is False
+    assert locked["guided_slider_values"]["threshold_bias_inactive_reason"] == "batch_threshold_locked"
 
 
 def test_b2b_guided_preview_is_transient_and_final_hash_matches_when_preview_is_fresh(tmp_path) -> None:
@@ -1359,7 +1057,6 @@ def test_b2b_guided_preview_is_transient_and_final_hash_matches_when_preview_is_
 
     preview = panel.build_guided_preview(
         image_uid=imported["uid"],
-        guided_mode="foolproof",
         stain_type="H&E",
         settings={"threshold_bias": 1},
     )
@@ -1370,7 +1067,6 @@ def test_b2b_guided_preview_is_transient_and_final_hash_matches_when_preview_is_
 
     measurement = panel.auto_analyze_he(
         image_uid=imported["uid"],
-        guided_mode="foolproof",
         settings={"threshold_bias": 1},
     )
 
@@ -1417,44 +1113,6 @@ def test_brightfield_batch_locked_apply_writes_apply_audit(tmp_path) -> None:
     assert "a_min=" in detail
 
 
-def test_auto_analyze_he_uses_tissue_mask_to_avoid_full_field_false_positive_in_foolproof_and_assisted_modes(tmp_path) -> None:
-    image_path = _write_synthetic_muscle_like_he_png(tmp_path / "he_tissue_mask_guard.png")
-    panel = BrightfieldPanel(panel_id="Figure1BFHETissueMask")
-    imported = panel.import_image(image_path, group="Tumor", stain_type="H&E")
-
-    foolproof = panel.auto_analyze_he(image_uid=imported["uid"], guided_mode="foolproof")
-    assisted = panel.auto_analyze_he(
-        image_uid=imported["uid"],
-        guided_mode="assisted",
-        settings={"sensitivity": "low", "cleanup_level": "high"},
-    )
-
-    for measurement in (foolproof, assisted):
-        metadata = measurement["analysis_metadata"]
-        assert measurement["results"]["area_fraction_percent"] < 95.0
-        assert measurement["results"]["object_count"] > 1
-        assert measurement["params"]["tissue_mask_enabled"] is True
-        assert metadata["stain_type"] == "H&E"
-        assert metadata["profile_id"] == "brightfield_he_eosin_area"
-        assert metadata["threshold_method"] == "lab_eosin_quantiles"
-    _assert_b1_semantics(
-        foolproof,
-        analysis_mode="guided_foolproof",
-        guided_mode="foolproof",
-        threshold_source="image_auto",
-        segmentation_mode="lab",
-        tissue_mask_enabled=True,
-    )
-    _assert_b1_semantics(
-        assisted,
-        analysis_mode="guided_assisted",
-        guided_mode="assisted",
-        threshold_source="image_auto",
-        segmentation_mode="lab",
-        tissue_mask_enabled=True,
-    )
-
-
 def test_brightfield_other_stain_warns_about_special_fallback(tmp_path) -> None:
     image_path = _write_synthetic_brightfield_png(tmp_path / "other_fallback.png")
     panel = BrightfieldPanel(panel_id="Figure1BFOtherFallback")
@@ -1482,11 +1140,12 @@ def test_brightfield_guided_state_normalization_does_not_change_modified_at() ->
     merged = panel._merge_guided_state(
         {
             "guided_mode": "guided",
+            "foolproof_threshold_bias": 2,
             "task_profile": {"task_id": "brightfield_he_eosin_area"},
         }
     )
 
-    assert merged["guided_mode"] == "foolproof"
+    assert merged["threshold_bias"] == 2
     assert panel.modified_at == original_modified_at
     assert len(panel.audit_log) == original_audit_count
 

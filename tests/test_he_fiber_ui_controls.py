@@ -51,15 +51,15 @@ def test_he_fiber_splitting_zero_survives_setter_and_project_roundtrip() -> None
         window.data_panel.set_brightfield_he_fiber_analysis_settings(dict(panel.data.get("analysis_settings", {})))
         assert window.data_panel.brightfield_he_fiber_method_combo.currentData() == "anti_oversegmentation"
         assert window.data_panel.brightfield_he_fiber_splitting_slider.value() == 0
-        assert window.data_panel.brightfield_analysis_settings()["he_fiber_splitting_sensitivity"] == 0
+        assert window.data_panel.brightfield_he_fiber_analysis_settings()["he_fiber_splitting_sensitivity"] == 0
 
         restored = BrightfieldPanel.from_dict(panel.to_dict())
         assert restored.data["analysis_settings"]["he_fiber_splitting_sensitivity"] == 0
         assert restored.data["analysis_settings"]["he_fiber_segmentation_method"] == "anti_oversegmentation"
         window.data_panel.set_brightfield_he_fiber_analysis_settings(dict(restored.data.get("analysis_settings", {})))
         assert window.data_panel.brightfield_he_fiber_splitting_slider.value() == 0
-        assert window.data_panel.brightfield_analysis_settings()["he_fiber_splitting_sensitivity"] == 0
-        assert window.data_panel.brightfield_analysis_settings()["he_fiber_segmentation_method"] == "anti_oversegmentation"
+        assert window.data_panel.brightfield_he_fiber_analysis_settings()["he_fiber_splitting_sensitivity"] == 0
+        assert window.data_panel.brightfield_he_fiber_analysis_settings()["he_fiber_segmentation_method"] == "anti_oversegmentation"
     finally:
         _close(window, app)
 

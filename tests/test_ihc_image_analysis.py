@@ -12,7 +12,6 @@ from core.image_analysis import (
     DAB_IHC_PROFILE,
     classify_dab_gmm,
     clean_mask,
-    compute_hscore,
     deconvolve_h_dab,
     estimate_dab_auto_parameters,
     estimate_stain_vectors_macenko,
@@ -124,27 +123,6 @@ def test_measure_area_fraction_and_channel_intensity_respect_roi_and_mask() -> N
     assert intensity["area_px"] == 2
     assert intensity["mean_intensity"] == pytest.approx(0.6)
     assert intensity["integrated_density"] == pytest.approx(1.2)
-
-
-def test_hscore_reports_negative_weak_moderate_and_strong_percentages() -> None:
-    channel = np.array([[0.1, 0.25, 0.55, 0.85, 0.95]], dtype=float)
-    roi = np.array([[True, True, True, True, True]], dtype=bool)
-
-    result = compute_hscore(
-        channel,
-        roi,
-        weak_threshold=0.20,
-        moderate_threshold=0.50,
-        strong_threshold=0.80,
-    )
-
-    assert result["total_area_px"] == 5
-    assert result["negative_percent"] == pytest.approx(20.0)
-    assert result["weak_percent"] == pytest.approx(20.0)
-    assert result["moderate_percent"] == pytest.approx(20.0)
-    assert result["strong_percent"] == pytest.approx(40.0)
-    assert result["positive_percent"] == pytest.approx(80.0)
-    assert result["h_score"] == pytest.approx(180.0)
 
 
 def test_render_mask_overlay_blends_only_positive_pixels() -> None:

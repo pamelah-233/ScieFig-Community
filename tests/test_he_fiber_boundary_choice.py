@@ -70,7 +70,7 @@ def test_he_ui_coexistence_and_explicit_reference_load(qt_application,desktop_sc
         assert not data.brightfield_he_fiber_splitting_slider.isEnabled()
         assert not hasattr(data,"brightfield_he_fiber_reference_button")
         data._load_he_fiber_reference()
-        settings=data.brightfield_analysis_settings()
+        settings=data.brightfield_he_fiber_analysis_settings()
         assert settings['he_fiber_cellpose_diameter_px']==50
         assert settings['min_object_area_px']==60 and settings['max_object_area_px']==0
         for language in ('zh','en'):

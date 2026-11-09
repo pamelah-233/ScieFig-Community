@@ -15,7 +15,7 @@ def test_optional_backends_parameters_and_legacy_defaults():
         assert workspace.ai_backend_combo.currentData() == 'local_heuristic'
         controls.set_brightfield_he_fiber_analysis_settings({
             'he_fiber_segmentation_method': 'cellpose_cyto3', 'he_fiber_cellpose_diameter_px': 75})
-        assert controls.brightfield_analysis_settings()['he_fiber_cellpose_diameter_px'] == 75
+        assert controls.brightfield_he_fiber_analysis_settings()['he_fiber_cellpose_diameter_px'] == 75
         assert controls.brightfield_he_fiber_cellpose_diameter_spin.isEnabled()
         assert not controls.brightfield_he_fiber_splitting_slider.isEnabled()
         workspace.set_ai_analysis_settings({'backend': 'cellpose_cyto3', 'cellpose_diameter_px': 55})

@@ -32,6 +32,7 @@ from core.image_analysis import (
     validate_overlay_result,
 )
 from core.image_analysis.io_engine import read_microscopy_image, read_rgb_image
+from core.image_analysis.auto_params import normalize_sensitivity
 from core.measurement_scale import merge_measurement_scale_updates, resolve_measurement_scale
 from core.constants import SOFTWARE_VERSION
 from core.models.panel import BasePanel, register_panel_class
@@ -46,14 +47,20 @@ ANALYSIS_BACKEND_NAME = "sciefig.image_analysis"
 def default_analysis_settings() -> dict[str, Any]:
     return {
         "positive_threshold": 0.20,
-        "weak_threshold": 0.20,
-        "moderate_threshold": 0.50,
-        "strong_threshold": 0.80,
         "tissue_mask_enabled": False,
         "tissue_mask_value_threshold": 0.90,
         "tissue_mask_saturation_threshold": 0.08,
         "tissue_mask_min_area_px": 100,
         "min_tissue_area_px": 100,
+    }
+
+
+def default_dab_auto_settings() -> dict[str, str | bool]:
+    defaults = DAB_IHC_PROFILE.default_settings
+    return {
+        "sensitivity": str(defaults.get("sensitivity", "medium")),
+        "cleanup_level": str(defaults.get("cleanup_level", "medium")),
+        "tissue_background_correction": bool(defaults.get("tissue_background_correction", True)),
     }
 
 
@@ -172,9 +179,9 @@ class IHCPanel(BasePanel):
         return self._read_raster(Path(str(image_record.get("source_path", ""))))
 
     def display_qimage(self, image_uid: str | None = None) -> QImage:
-        from core.plotting.histology_display import white_balanced_qimage
+        from core.plotting.histology_processing import processed_histology_qimage
         record=self._resolve_image_record(image_uid)
-        return white_balanced_qimage(self.source_qimage(record['uid']),record.get('display_white_balance'))
+        return processed_histology_qimage(self.source_qimage(record['uid']), record)
 
     def set_image_roi(self, image_uid: str, roi_type: str, coordinates_px: dict[str, Any]) -> dict[str, Any]:
         image_record = self._resolve_image_record(image_uid)
@@ -222,8 +229,7 @@ class IHCPanel(BasePanel):
         image_record = self.active_image()
         if image_record is None:
             raise ValueError("IHC panel has no active image to render.")
-        source = Path(str(image_record.get("source_path", "")))
-        image = self._read_raster(source)
+        image = self.display_qimage(image_record['uid'])
         target_size = target_pixel_size(target_width_mm, target_height_mm, dpi)
         return fit_qimage_to_size(image, target_size, QColor("white"))
 
@@ -358,6 +364,31 @@ class IHCPanel(BasePanel):
         measurements.append(measurement)
         self.analysis["ihc_measurements"] = measurements
         self.analysis.pop('ihc_statistics',None)
+
+    def dab_auto_settings(self) -> dict[str, str | bool]:
+        settings = default_dab_auto_settings()
+        settings["sensitivity"] = normalize_sensitivity(
+            self.data.get("dab_detection_sensitivity", settings["sensitivity"])
+        )
+        return settings
+
+    def locked_dab_batch_threshold(self) -> float | None:
+        batch = (self.data.get("guided_state") or {}).get("batch_threshold_state") or {}
+        return batch.get("batch_threshold") if batch.get("locked") else None
+
+    def reset_dab_batch_threshold(self) -> None:
+        threshold = self.locked_dab_batch_threshold()
+        if threshold is None:
+            return
+        state = self._merge_guided_state(self.data.get("guided_state"))
+        batch = BatchThresholdState.from_dict(state["batch_threshold_state"])
+        batch.batch_threshold = None
+        batch.batch_threshold_source_image = None
+        batch.batch_threshold_method = None
+        batch.locked = False
+        state["batch_threshold_state"] = batch.to_dict()
+        self.data["guided_state"] = state
+        self.append_audit("reset_ihc_batch_threshold", f"previous_threshold={threshold:.3f}")
 
     def auto_analyze_dab(
         self,
@@ -698,9 +729,12 @@ class IHCPanel(BasePanel):
         return render_mask_overlay(rgb, analysis["mask"], alpha=overlay_opacity)
 
     def _dab_analysis_cache_key(self, measurement: dict[str, Any]) -> str:
+        from core.plotting.histology_processing import histology_input_context
+        record = self._resolve_image_record(str(measurement.get("image_uid", "")))
         return sha256_json(
             {
                 "image_uid": str(measurement.get("image_uid", "")),
+                "input_processing": histology_input_context(record),
                 "params": dict(measurement.get("params", {})),
                 "roi": dict(measurement.get("roi", {})),
             }
@@ -764,6 +798,9 @@ class IHCPanel(BasePanel):
     def _load_image_rgb(self, image_uid: str | None = None) -> tuple[dict[str, Any], np.ndarray]:
         image_record = self._resolve_image_record(image_uid)
         rgb, _ = read_rgb_image(Path(str(image_record.get("source_path", ""))))
+        if image_record.get('segmentation_input', 'raw') == 'adjusted':
+            from core.plotting.histology_processing import apply_histology_processing
+            rgb = apply_histology_processing(rgb, image_record)
         return image_record, rgb
 
     def _build_import_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
@@ -793,6 +830,8 @@ class IHCPanel(BasePanel):
         merged.update(dict(self.data.get("analysis_settings", {})))
         if settings:
             merged.update(dict(settings))
+        for key in ("weak_threshold", "moderate_threshold", "strong_threshold"):
+            merged.pop(key, None)
         return merged
 
     def _merge_guided_state(self, guided_state: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1018,9 +1057,9 @@ class IHCPanel(BasePanel):
         for measurement in reversed(list(image_record.get("measurements", []))):
             if str(measurement.get("image_uid", "")).strip() != image_uid:
                 continue
-            if str(measurement.get("threshold_source", "")).strip() == "example_guided":
-                continue
-            return measurement
+            source = str(measurement.get("threshold_source", "")).strip()
+            if source != "example_guided" and measurement.get("auto_parameter_result"):
+                return measurement
         return None
 
     def _dedupe_messages(self, messages: list[str]) -> list[str]:

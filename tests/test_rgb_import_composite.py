@@ -19,6 +19,7 @@ from ui.panels.fluorescence_image_export import (
     COMPOSITION_CHANNELS,
     COMPOSITION_MERGE,
     SOURCE_ORIGINAL,
+    SOURCE_UNADJUSTED,
     FluorescenceImageExportDialog,
     render_fluorescence_export_payloads,
 )
@@ -276,6 +277,18 @@ def test_mainwindow_async_import_button_and_inverse(tmp_path: Path) -> None:
     assert workspace.force_split_rgb_button.isEnabled()
     _assert_original_rgb(panel._render_image_pixels(image), source)
 
+    workspace.lock_display_checkbox.setChecked(False)
+    brightness = workspace._rgb_display_widgets[2]
+    brightness.setValue(20)
+    assert image["rgb_display"]["brightness"] == 20
+    adjusted = _qimage_rgba(panel._render_image_pixels(image))
+    assert not np.array_equal(adjusted[:, :, :3], source[:, :, :3])
+    assert np.array_equal(adjusted[:, :, 3], source[:, :, 3])
+    unadjusted = render_fluorescence_export_payloads(
+        panel, image, source=SOURCE_UNADJUSTED, composition=COMPOSITION_MERGE,
+    )[0][1]
+    _assert_original_rgb(unadjusted, source)
+
     workspace.force_split_rgb_button.click()
     _APP.processEvents()
     split = panel.active_image()
@@ -283,13 +296,16 @@ def test_mainwindow_async_import_button_and_inverse(tmp_path: Path) -> None:
     assert [channel["name"] for channel in split["channels"]] == ["Red", "Green", "Blue"]
     assert workspace.force_split_rgb_button.text() == tr("restore_auto_detection")
     assert workspace.view_mode_combo.isEnabled()
+    assert workspace._rgb_display_widgets == []
+    recombined = render_fluorescence_qimage(panel.image_data(split['uid']), split, split['channels'], view_mode='merge')
+    _assert_original_rgb(recombined, source)
 
     workspace.force_split_rgb_button.click()
     _APP.processEvents()
     restored = panel.active_image()
     assert restored is not None
     assert restored["channel_interpretation"]["mode"] == "rgb_composite"
-    _assert_original_rgb(panel._render_image_pixels(restored), source)
+    assert np.array_equal(_qimage_rgba(panel._render_image_pixels(restored)), adjusted)
     assert workspace.force_split_rgb_button.text() == tr("force_split_rgb")
     _close_window(window)
 
