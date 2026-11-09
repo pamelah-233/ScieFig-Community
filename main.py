@@ -14,9 +14,6 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.platform_support import ScieFigApplication, configure_application, configure_window
 from core.constants import SOFTWARE_VERSION
 
-_windows_application = None
-
-
 def load_qss(resources_dir: Path) -> str:
     from PyQt6.QtCore import QDir
     QDir.setSearchPaths('sciefigSpin', [str(resources_dir / 'icons')])
@@ -46,11 +43,7 @@ def resolve_resources_dir() -> Path:
 
 
 def main() -> int:
-    global _windows_application
     app = ScieFigApplication(sys.argv)
-    if sys.platform == 'win32' and isinstance(app, QApplication):
-        # Keep Qt alive through Windows process shutdown after window cleanup.
-        _windows_application = app
     app.setOrganizationName("ScieFig")
     app.setApplicationName("ScieFig")
     app.setApplicationVersion(SOFTWARE_VERSION)
@@ -120,8 +113,7 @@ def main() -> int:
             if window is not None and not sip.isdeleted(window):
                 sip.delete(window)
             app.processEvents()
-            if _windows_application is None:
-                sip.delete(app)
+            sip.delete(app)
 
 
 if __name__ == "__main__":
