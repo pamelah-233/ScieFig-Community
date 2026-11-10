@@ -17,6 +17,7 @@ from main import load_qss
 from ui.panels.fluorescence_workspace import CurrentPageStackedWidget
 
 from core.models import BrightfieldPanel, IHCPanel, Project
+from core.plotting.histology_display import qimage_rgb
 from core.utils.i18n import get_language, set_language, tr
 from ui.main_window import MainWindow
 from ui.panels.brightfield_workspace import measurement_preview_line_px
@@ -369,11 +370,11 @@ def test_ihc_completed_analysis_keeps_original_overlay_toggle(tmp_path: Path, de
         app.processEvents()
         assert window.data_panel.selected_ihc_measurement_uuid() == first_uuid
         history_renders = renders["count"]
-        original_key = workspace.canvas._original_pixmap.cacheKey()
+        original_pixels = qimage_rgb(workspace.canvas._original_pixmap.toImage())
         overlay_key = workspace.canvas._overlay_pixmap.cacheKey()
         workspace.original_preview_button.click()
         app.processEvents()
-        assert workspace.canvas._source_pixmap.cacheKey() == original_key
+        np.testing.assert_array_equal(qimage_rgb(workspace.canvas._source_pixmap.toImage()), original_pixels)
         workspace.overlay_preview_button.click()
         app.processEvents()
         assert workspace.canvas._source_pixmap.cacheKey() == overlay_key
@@ -403,13 +404,13 @@ def test_brightfield_completed_analysis_paths_keep_original_overlay_toggle(tmp_p
         _assert_toggle_usable(workspace, overlay_enabled=True)
         assert workspace.canvas.has_original_pixmap()
         assert workspace.canvas.has_overlay_pixmap()
-        original_key = workspace.canvas._original_pixmap.cacheKey()
+        original_pixels = qimage_rgb(workspace.canvas._original_pixmap.toImage())
         overlay_key = workspace.canvas._overlay_pixmap.cacheKey()
-        assert original_key != overlay_key
+        assert not np.array_equal(original_pixels, qimage_rgb(workspace.canvas._overlay_pixmap.toImage()))
         workspace.original_preview_button.click()
         app.processEvents()
         assert workspace.current_preview_mode() == "original"
-        assert workspace.canvas._source_pixmap.cacheKey() == original_key
+        np.testing.assert_array_equal(qimage_rgb(workspace.canvas._source_pixmap.toImage()), original_pixels)
         workspace.overlay_preview_button.click()
         app.processEvents()
         assert workspace.current_preview_mode() == "overlay"
@@ -447,18 +448,20 @@ def test_brightfield_completed_analysis_paths_keep_original_overlay_toggle(tmp_p
         cell_panel.data["active_image_uid"] = "image-1"
         window.data_panel.brightfield_measure_type_combo.setCurrentIndex(0)
         window._refresh_brightfield_preview(cell_panel)
+        strategy = window.data_panel.brightfield_cellpose_strategy_combo
+        strategy.setCurrentIndex(strategy.findData("traditional"))
         window.data_panel.brightfield_bright_round_cell_measure_button.click()
         _wait_busy(window, "brightfield-cellpose")
         _assert_toggle_usable(workspace, overlay_enabled=True)
         assert workspace.canvas.has_original_pixmap()
         assert workspace.canvas.has_overlay_pixmap()
-        cell_original = workspace.canvas._original_pixmap.cacheKey()
+        cell_original_pixels = qimage_rgb(workspace.canvas._original_pixmap.toImage())
         cell_overlay = workspace.canvas._overlay_pixmap.cacheKey()
-        assert cell_original != cell_overlay
+        assert not np.array_equal(cell_original_pixels, qimage_rgb(workspace.canvas._overlay_pixmap.toImage()))
         workspace.original_preview_button.click()
         app.processEvents()
         assert workspace.current_preview_mode() == "original"
-        assert workspace.canvas._source_pixmap.cacheKey() == cell_original
+        np.testing.assert_array_equal(qimage_rgb(workspace.canvas._source_pixmap.toImage()), cell_original_pixels)
         workspace.overlay_preview_button.click()
         app.processEvents()
         assert workspace.current_preview_mode() == "overlay"
@@ -476,8 +479,8 @@ def test_brightfield_completed_analysis_paths_keep_original_overlay_toggle(tmp_p
         fiber_panel = window._active_brightfield_panel()
         fiber_uid = str(fiber_panel.active_image()["uid"])
         fiber_panel.calibrate_he_fiber_area(image_uid=fiber_uid)
-        first_fiber = fiber_panel.create_ai_object_count_measurement(image_uid=fiber_uid)
-        second_fiber = fiber_panel.create_ai_object_count_measurement(image_uid=fiber_uid)
+        first_fiber = fiber_panel.create_ai_object_count_measurement(image_uid=fiber_uid, settings={"he_fiber_segmentation_method": "original"})
+        second_fiber = fiber_panel.create_ai_object_count_measurement(image_uid=fiber_uid, settings={"he_fiber_segmentation_method": "original"})
         window._refresh_brightfield_preview(fiber_panel, measurement_uuid=str(second_fiber["measurement_uuid"]))
         app.processEvents()
         _assert_toggle_usable(workspace, overlay_enabled=True)
@@ -489,13 +492,13 @@ def test_brightfield_completed_analysis_paths_keep_original_overlay_toggle(tmp_p
             return original_fiber_render(**kwargs)
 
         fiber_panel.render_measurement_overlay = count_fiber
-        fiber_original = workspace.canvas._original_pixmap.cacheKey()
+        fiber_original = qimage_rgb(workspace.canvas._original_pixmap.toImage())
         fiber_overlay = workspace.canvas._overlay_pixmap.cacheKey()
-        assert fiber_original != fiber_overlay
+        assert not np.array_equal(fiber_original, qimage_rgb(workspace.canvas._overlay_pixmap.toImage()))
         baseline_fiber = fiber_renders["count"]
         workspace.original_preview_button.click()
         app.processEvents()
-        assert workspace.canvas._source_pixmap.cacheKey() == fiber_original
+        np.testing.assert_array_equal(qimage_rgb(workspace.canvas._source_pixmap.toImage()), fiber_original)
         workspace.overlay_preview_button.click()
         app.processEvents()
         assert workspace.canvas._source_pixmap.cacheKey() == fiber_overlay
@@ -503,10 +506,10 @@ def test_brightfield_completed_analysis_paths_keep_original_overlay_toggle(tmp_p
         window.select_brightfield_ai_measurement_result(str(first_fiber["measurement_uuid"]))
         app.processEvents()
         history_overlay = workspace.canvas._overlay_pixmap.cacheKey()
-        history_original = workspace.canvas._original_pixmap.cacheKey()
+        history_original = qimage_rgb(workspace.canvas._original_pixmap.toImage())
         workspace.original_preview_button.click()
         app.processEvents()
-        assert workspace.canvas._source_pixmap.cacheKey() == history_original
+        np.testing.assert_array_equal(qimage_rgb(workspace.canvas._source_pixmap.toImage()), history_original)
         workspace.overlay_preview_button.click()
         app.processEvents()
         assert workspace.canvas._source_pixmap.cacheKey() == history_overlay
