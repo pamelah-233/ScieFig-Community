@@ -2,9 +2,9 @@
 
 ## 下载与安装 / Download and install
 
-**当前正式版 / Current release: [ScieFig 1.2.4](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.4)**
+**当前正式版 / Current releases: [Windows 1.2.5](https://github.com/pamelah-233/ScieFig-Community/releases/tag/windows-v1.2.5) · [macOS 1.2.4](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.4)**
 
-- **Windows x64** — [完整安装包 / Full installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_Setup.exe) · [CPU 基础包 / CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_CPU_Setup.exe) · [纯英文 CPU 包 / English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_English_CPU_Setup.exe)。完整包已含 NVIDIA GPU 运行库。CPU 包可从发布页获取兼容的 GPU 补充包。 / The full installer includes NVIDIA GPU support. The release page links to the compatible GPU component for the CPU installers.
+- **Windows x64** — [完整安装包 / Full installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/windows-v1.2.5/ScieFig_1.2.5_Windows_Setup.exe) · [CPU 基础包 / CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/windows-v1.2.5/ScieFig_1.2.5_Windows_CPU_Setup.exe) · [纯英文 CPU 包 / English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/windows-v1.2.5/ScieFig_1.2.5_Windows_English_CPU_Setup.exe)。完整包已含 NVIDIA GPU 运行库。CPU 包可从发布页获取兼容的 GPU 补充包。 / The full installer includes NVIDIA GPU support. The release page links to the compatible GPU component for the CPU installers.
 - **macOS 14+ · Apple Silicon** — [下载 1.2.4 DMG / Download the 1.2.4 DMG](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_macOS_arm64.dmg)。打开 DMG，将 ScieFig 拖入「应用程序」。如果已有安装，在原位置替换。 / Open the DMG and drag ScieFig into Applications. Replace any existing copy in place.
 
 安装包无需另装 Python 或激活。 / The installers require neither a separate Python installation nor activation.
@@ -15,7 +15,7 @@
 
 ### 中文
 
-下面是默认分支的源码运行说明。Windows 与 macOS 的 1.2.4 打包源码请查阅发布页中各平台的源码入口。
+下面是默认分支的源码运行说明。Windows 1.2.5 与 macOS 1.2.4 的打包源码请查阅发布页中各平台的源码入口。
 
 1. 安装 Python 3.14，创建虚拟环境。
 2. 安装依赖：`python -m pip install -r requirements.txt`。
@@ -51,7 +51,7 @@ TRUEFAD 权重已经随公开源码候选提供。原始两份权重使用固定
 ### English
 
 These instructions apply to the default branch. See the release page for the
-Windows and macOS 1.2.4 build source references.
+Windows 1.2.5 and macOS 1.2.4 build source references.
 
 - Create a Python 3.14 virtual environment and install `requirements.txt`.
 - Run `python main.py`; use the labelled synthetic qPCR CSV for a first run.

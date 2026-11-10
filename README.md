@@ -5,7 +5,7 @@ Scientific data and image analysis, plotting and figure assembly.
 
 ## 下载 / Download
 
-### Windows 1.2.4
+### Windows 1.2.5
 
 > [!IMPORTANT]
 > **Windows 11 智能应用控制 / Smart App Control**
@@ -18,9 +18,9 @@ Scientific data and image analysis, plotting and figure assembly.
 
 | 安装包 / Installer | 下载 / Download |
 | --- | --- |
-| 完整离线包，包含 CPU / NVIDIA GPU 运行库 / Full offline package | [Windows 完整安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_Setup.exe) |
-| CPU 基础包 / CPU package | [Windows CPU 安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_CPU_Setup.exe) |
-| 纯英文 CPU 包 / English-only CPU package | [Windows English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_Windows_English_CPU_Setup.exe) |
+| 完整离线包，包含 CPU / NVIDIA GPU 运行库 / Full offline package | [Windows 完整安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/windows-v1.2.5/ScieFig_1.2.5_Windows_Setup.exe) |
+| CPU 基础包 / CPU package | [Windows CPU 安装包](https://github.com/pamelah-233/ScieFig-Community/releases/download/windows-v1.2.5/ScieFig_1.2.5_Windows_CPU_Setup.exe) |
+| 纯英文 CPU 包 / English-only CPU package | [Windows English CPU installer](https://github.com/pamelah-233/ScieFig-Community/releases/download/windows-v1.2.5/ScieFig_1.2.5_Windows_English_CPU_Setup.exe) |
 | NVIDIA GPU 补充包 / GPU component | [现有 GPU 补充包 / Existing GPU component](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.2/ScieFig_GPU_cellpose3_torch212_win64_v1.zip) |
 
 CPU 基础包和纯英文 CPU 包可加装上方 NVIDIA GPU 补充包。<br>
@@ -33,9 +33,9 @@ The CPU and English CPU packages support the existing NVIDIA GPU component.
 Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。<br>
 The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
 
-1.2.4 打包源码 / Build source: [Windows](https://github.com/pamelah-233/ScieFig-Community/tree/6238fb4ba2a12ea80c9810715bc2f0deee35da3b) · [macOS](https://github.com/pamelah-233/ScieFig-Community/tree/a1b12f210979b2d7f075bafb567c60cffaaa6a4d)。源码快照中的旧下载链接仅作历史记录，请使用上方安装包链接。 / Use the installer links above; source snapshots can contain historical download links.
+打包源码 / Build source: [Windows 1.2.5](https://github.com/pamelah-233/ScieFig-Community/tree/2812ca241b7ae94f0c5b2e520123a450e372504e) · [macOS 1.2.4](https://github.com/pamelah-233/ScieFig-Community/tree/a1b12f210979b2d7f075bafb567c60cffaaa6a4d)。源码快照中的旧下载链接仅作历史记录，请使用上方安装包链接。 / Use the installer links above; source snapshots can contain historical download links.
 
-[1.2.4 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.4) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
+[Windows 1.2.5 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/windows-v1.2.5) · [1.2.4 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.4) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
 
 ## 1.2.4 更新 / What's new in 1.2.4
 
