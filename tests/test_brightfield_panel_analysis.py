@@ -531,7 +531,8 @@ def test_b2a_foolproof_whole_image_guided_metadata_is_persisted_without_changing
     assert measurement["results"]["object_count"] == 1
     assert measurement["results"]["mean_object_area_px"] == pytest.approx(16.0)
     assert measurement["results"]["roi_area_px"] == 64
-    assert measurement["params"]["a_min"] == pytest.approx(20.727378845214844)
+    # OpenCV's float32 Lab conversion varies slightly between ARM64 and x64.
+    assert measurement["params"]["a_min"] == pytest.approx(20.727378845214844, abs=5e-5)
     assert measurement["guided_mapping_version"] == BRIGHTFIELD_AUTO_MAPPING_VERSION
     assert measurement["guided_preview_status"] == BRIGHTFIELD_GUIDED_PREVIEW_STATUS
     assert measurement["guided_baseline_source"] == "image_auto"
@@ -582,7 +583,7 @@ def test_b2a_foolproof_roi_guided_metadata_is_persisted_without_changing_results
     assert measurement["results"]["object_count"] == 1
     assert measurement["results"]["mean_object_area_px"] == pytest.approx(16.0)
     assert measurement["results"]["roi_area_px"] == 16
-    assert measurement["params"]["a_min"] == pytest.approx(20.727378845214844)
+    assert measurement["params"]["a_min"] == pytest.approx(20.727378845214844, abs=5e-5)
     assert measurement["guided_slider_values"] == {
         **neutral_brightfield_guided_slider_values(),
         "threshold_bias_active": True,
