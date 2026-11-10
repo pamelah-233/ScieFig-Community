@@ -1,0 +1,53 @@
+name: Publish verified ScieFig macOS 1.2.5
+
+on:
+  push:
+    tags: [macos-v1.2.5]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Retrieve the verified DMG for this source commit
+        run: |
+          candidate=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&branch=macos-1.2.5&status=success" --jq '[.workflow_runs[] | select(.path == ".github/workflows/build-macos-1.2.5.yml")][0].id')
+          test -n "$candidate"
+          gh run download "$candidate" --repo "$GITHUB_REPOSITORY" -n ScieFig-1.2.5-macOS-arm64 -D artifacts
+          jq -e --arg commit "$GITHUB_SHA" '.commit == $commit and .version == "1.2.5" and .architecture == "arm64" and .installed_devices == ["cpu", "mps"]' artifacts/macos-candidate.json
+          echo "CANDIDATE_RUN=$candidate" >> "$GITHUB_ENV"
+      - name: Publish the verified macOS package
+        run: |
+          cat > release.md <<EOF
+          # ScieFig 1.2.5
+
+          ## macOS
+
+          打包源码 / Build source · [macOS 1.2.5]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA)
+
+          | 下载 / Download | 说明 / Details |
+          | --- | --- |
+          | [macOS DMG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/macos-v1.2.5/ScieFig_1.2.5_macOS_arm64.dmg) | Apple Silicon · macOS 14+ · 包含运行库与离线模型 / Runtimes and offline models included |
+
+          打开 DMG，将 ScieFig 拖入「应用程序」。可在应用中选择 CPU 或 Apple GPU。<br>
+          Open the DMG and drag ScieFig to Applications. Select CPU or Apple GPU in the app.
+
+          ## 本次更新 / Update
+
+          同步 1.2.5 的画布适应、WB 流转、图像调整、测量默认设置及并发稳定性改进。<br>
+          Includes the 1.2.5 canvas, WB transfer, image adjustment, measurement defaults, and concurrency improvements. [Windows 1.2.5 更新详情 / Release details]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/windows-v1.2.5)
+
+          ## 验证 / Verification
+
+          在 Apple Silicon 上运行回归，核对 ND2 像素，验证 DMG 内应用的签名、启动退出和 CPU、Apple GPU 实算。<br>
+          Ran regressions and compared ND2 pixels on Apple Silicon. Verified signing, startup and shutdown, and CPU and Apple GPU inference from the DMG. [macOS 构建 / macOS build]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN)
+
+          [使用说明 / Getting started]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/docs/GETTING_STARTED.md)
+          EOF
+          gh release create "$GITHUB_REF_NAME" artifacts/ScieFig_1.2.5_macOS_arm64.dmg --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title 'ScieFig 1.2.5 (macOS)' --notes-file release.md
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false

@@ -14,9 +14,6 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.platform_support import ScieFigApplication, configure_application, configure_window
 from core.constants import SOFTWARE_VERSION
 
-_windows_application = None
-
-
 def load_qss(resources_dir: Path) -> str:
     from PyQt6.QtCore import QDir
     QDir.setSearchPaths('sciefigSpin', [str(resources_dir / 'icons')])
@@ -46,12 +43,7 @@ def resolve_resources_dir() -> Path:
 
 
 def main() -> int:
-    global _windows_application
     app = ScieFigApplication(sys.argv)
-    if sys.platform == 'win32' and isinstance(app, QApplication):
-        # Retain Qt until the process boundary: Windows Qt teardown
-        # crashes after a successfully closed main window (0xC0000005).
-        _windows_application = app
     app.setOrganizationName("ScieFig")
     app.setApplicationName("ScieFig")
     app.setApplicationVersion(SOFTWARE_VERSION)
@@ -92,6 +84,9 @@ def main() -> int:
             schedule_project_welcome(window, resources_dir)
         if os.environ.get('SCIEFIG_RELEASE_SMOKE') == '1':
             from PyQt6.QtCore import QTimer
+            if '--wb-demo' in sys.argv:
+                # The synthetic project starts with deliberate edits.
+                window._capture_clean_project_baseline()
             def finish_release_smoke():
                 if window.is_project_dirty() or not window.close():
                     app.exit(2)
@@ -110,13 +105,21 @@ def main() -> int:
         splash=None
         sys.excepthook = previous_excepthook
         if isinstance(app, QApplication):
+            import gc
             from PyQt6 import sip
+            from PyQt6.QtCore import QCoreApplication, QEvent, QThreadPool
+            # Analysis and recovery jobs can still be unwinding after the window closes.
+            QThreadPool.globalInstance().waitForDone()
             app.project_window = None
             if window is not None and not sip.isdeleted(window):
                 sip.delete(window)
+            window = None
             app.processEvents()
-            if _windows_application is None:
-                sip.delete(app)
+            # Chart canvases and other Qt wrappers must be collected while Qt is live.
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            gc.collect()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            sip.delete(app)
 
 
 if __name__ == "__main__":
@@ -124,11 +127,4 @@ if __name__ == "__main__":
         from ui.dialogs.spatial_demo import run_demo
         run_demo(load_qss(resolve_resources_dir()))
     exit_code = main()
-    if _windows_application is not None:
-        # main() has already completed window/worker cleanup and save prompts.
-        # Avoid the failing native QApplication finalizer in the frozen build.
-        for stream in (sys.stdout, sys.stderr):
-            if stream is not None:
-                stream.flush()
-        os._exit(exit_code)
     raise SystemExit(exit_code)

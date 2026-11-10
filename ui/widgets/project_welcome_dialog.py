@@ -27,6 +27,7 @@ COPY = {
 
 
 def newer_platform_release(releases, current_version, platform):
+    platform_tag = {'win32': 'windows', 'darwin': 'macos'}.get(platform)
     suffixes = {
         'win32': ('Windows_Setup.exe', 'Windows_CPU_Setup.exe', 'Windows_English_CPU_Setup.exe',
                   'Setup.exe', 'CPU_Setup.exe', 'English_CPU_Setup.exe'),
@@ -40,21 +41,21 @@ def newer_platform_release(releases, current_version, platform):
         if not isinstance(release, dict) or release.get('draft') is not False or release.get('prerelease') is not False:
             continue
         tag = release.get('tag_name')
-        match = re.fullmatch(r'community-v([0-9]+\.[0-9]+\.[0-9]+)', tag) if isinstance(tag, str) else None
-        if not match:
+        match = re.fullmatch(r'(community|macos|windows)-v([0-9]+\.[0-9]+\.[0-9]+)', tag) if isinstance(tag, str) else None
+        if not match or match[1] not in {'community', platform_tag}:
             continue
-        version = match[1]
+        version = match[2]
         number = tuple(map(int, version.split('.')))
         if number <= current:
             continue
         names = {f'ScieFig_{version}_{suffix}' for suffix in suffixes}
         if any(isinstance(asset, dict) and asset.get('state') == 'uploaded' and asset.get('name') in names
                for asset in release.get('assets') or []):
-            candidate = (number, tag)
+            candidate = (number, match[1] == platform_tag, tag)
             if latest is None or candidate > latest:
                 latest = candidate
     if latest is not None:
-        number, tag = latest
+        number, _, tag = latest
         return '.'.join(map(str, number)), f'{PROJECT_URL}/releases/tag/{tag}'
     return None
 

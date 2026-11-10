@@ -22,6 +22,7 @@ class SpatialOverview(QWidget):
         self.tabs=QTabWidget();layout.addWidget(self.tabs,1);self.tables={}
         for key in ('spatial_phenotypes','spatial_cells','spatial_neighbors'):
             table=QTableWidget();table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            table.setProperty('workflowGroupTable', True)
             table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);table.setMinimumHeight(65)
             table.verticalHeader().hide();table.setWordWrap(True)
             table.cellClicked.connect(lambda row,col,t=table:controller.select_cell(t.item(row,col).data(Qt.ItemDataRole.UserRole))
@@ -134,7 +135,7 @@ class _SpatialResultModel(QAbstractTableModel):
     def columnCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.fields)
 
-    def headerData(self, section, orientation, role):
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
             return self.headers[section]
         return super().headerData(section, orientation, role)
@@ -147,7 +148,7 @@ class _SpatialResultModel(QAbstractTableModel):
             return json.dumps(value, ensure_ascii=False)
         return f'{value:.6g}' if isinstance(value, float) else str(value)
 
-    def data(self, index, role):
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
         row = self.rows[self._order[index.row()]]
@@ -239,6 +240,8 @@ class SpatialResultsDialog(QDialog):
             if load_rows is None:
                 return
             table.setModel(_SpatialResultModel(load_rows(), colors, table))
+            from ui.widgets.table_presentation import readable_table
+            readable_table(table)
             table.setSortingEnabled(True)
             table.resizeColumnsToContents()
 

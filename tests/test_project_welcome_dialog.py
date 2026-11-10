@@ -55,9 +55,9 @@ def test_welcome_is_shown_on_each_launch_without_opening_browser(qt_application,
 
 
 def test_update_requires_a_newer_stable_release_with_a_platform_installer():
-    def release(version, *names, draft=False, prerelease=False):
+    def release(version, *names, prefix='community', draft=False, prerelease=False):
         return {
-            'tag_name': f'community-v{version}', 'draft': draft, 'prerelease': prerelease,
+            'tag_name': f'{prefix}-v{version}', 'draft': draft, 'prerelease': prerelease,
             'assets': [{'name': f'ScieFig_{version}_{name}', 'state': 'uploaded'} for name in names],
         }
 
@@ -67,12 +67,14 @@ def test_update_requires_a_newer_stable_release_with_a_platform_installer():
         release('1.2.18'),
         release('1.2.9', 'Windows_Setup.exe'),
         release('1.2.10', 'macOS_arm64.dmg'),
+        release('1.2.10', 'macOS_arm64.dmg', prefix='macos'),
+        release('1.2.17', 'macOS_arm64.dmg', prefix='windows'),
         release('1.2.11', 'Windows_CPU_Setup.exe'),
         release('1.2.3', 'macOS_arm64.dmg', 'Windows_CPU_Setup.exe'),
     ]
-    for platform, version in (('darwin', '1.2.10'), ('win32', '1.2.11')):
+    for platform, version, prefix in (('darwin', '1.2.10', 'macos'), ('win32', '1.2.11', 'community')):
         assert welcome.newer_platform_release(releases, '1.2.4', platform) == (
-            version, f'{welcome.PROJECT_URL}/releases/tag/community-v{version}',
+            version, f'{welcome.PROJECT_URL}/releases/tag/{prefix}-v{version}',
         )
         assert welcome.newer_platform_release(releases, version, platform) is None
     assert welcome.newer_platform_release({}, '1.2.4', 'darwin') is None
