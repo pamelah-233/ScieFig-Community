@@ -69,7 +69,6 @@ def discard_unsaved_changes_questions(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def cleanup_qt_widgets_after_test(discard_unsaved_changes_questions, qt_application):
-    yield
     try:
         import gc
 
@@ -77,7 +76,10 @@ def cleanup_qt_widgets_after_test(discard_unsaved_changes_questions, qt_applicat
         from PyQt6.QtWidgets import QApplication
         from ui.widgets.editable_text_item import cleanup_registered_graphics_scenes
     except Exception:
+        yield
         return
+    # Load the Qt cleanup helpers before a test can leave closed widgets behind.
+    yield
     app = QApplication.instance()
     if app is not None:
         widgets = list(app.topLevelWidgets())
