@@ -26,16 +26,16 @@ Scientific data and image analysis, plotting and figure assembly.
 CPU 基础包和纯英文 CPU 包可加装上方 NVIDIA GPU 补充包。<br>
 The CPU and English CPU packages support the existing NVIDIA GPU component.
 
-### macOS 1.2.4
+### macOS 1.2.5
 
-**[macOS DMG · Apple Silicon](https://github.com/pamelah-233/ScieFig-Community/releases/download/community-v1.2.4/ScieFig_1.2.4_macOS_arm64.dmg)**
+**[macOS DMG · Apple Silicon](https://github.com/pamelah-233/ScieFig-Community/releases/download/macos-v1.2.5/ScieFig_1.2.5_macOS_arm64.dmg)**
 
 Mac 安装包包含运行库与离线模型，可在界面选择 CPU 或 Apple GPU。<br>
 The Mac package includes runtimes and offline models, with CPU or Apple GPU selection.
 
-打包源码 / Build source: [Windows 1.2.5](https://github.com/pamelah-233/ScieFig-Community/tree/2812ca241b7ae94f0c5b2e520123a450e372504e) · [macOS 1.2.4](https://github.com/pamelah-233/ScieFig-Community/tree/a1b12f210979b2d7f075bafb567c60cffaaa6a4d)。源码快照中的旧下载链接仅作历史记录，请使用上方安装包链接。 / Use the installer links above; source snapshots can contain historical download links.
+打包源码 / Build source: [Windows 1.2.5](https://github.com/pamelah-233/ScieFig-Community/tree/2812ca241b7ae94f0c5b2e520123a450e372504e) · [macOS 1.2.5](https://github.com/pamelah-233/ScieFig-Community/tree/a6cb1256b42fa23e8c5597c6d987a53abde56204)。源码快照中的旧下载链接仅作历史记录，请使用上方安装包链接。 / Use the installer links above; source snapshots can contain historical download links.
 
-[Windows 1.2.5 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/windows-v1.2.5) · [1.2.4 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.4) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
+[Windows 1.2.5 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/windows-v1.2.5) · [macOS 1.2.5 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/macos-v1.2.5) · [1.2.4 更新详情 / What's new](https://github.com/pamelah-233/ScieFig-Community/releases/tag/community-v1.2.4) · [使用说明 / Getting started](docs/GETTING_STARTED.md) · [历史版本 / Previous releases](https://github.com/pamelah-233/ScieFig-Community/releases)
 
 ## 1.2.4 更新 / What's new in 1.2.4
 
