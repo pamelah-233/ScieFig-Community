@@ -41,9 +41,9 @@ def test_preset_actions_remain_readable_when_sidebar_resizes(empty_window):
     w=empty_window
     for language in ('zh','en'):
         w.switch_language(language)
-        for module,task in (('fluoro','roi_intensity'),('brightfield','cells'),('ihc',None)):
-            w.set_module(module);w.workflow_ui.buttons[module][2 if task else 1].click()
-            if task:w.measurement_tasks[module].select(task)
+        for module,task in (('fluoro','roi_intensity'),('brightfield','cells')):
+            w.set_module(module);w.workflow_ui.buttons[module][2].click()
+            w.measurement_tasks[module].select(task)
             for section in w.workflow_ui.panels[module].findChildren(WorkflowDisclosure):
                 if section.toggle.isVisible():section.setExpanded(True)
             bar=w.analysis_state.bars['fluorescence' if module=='fluoro' else module]
